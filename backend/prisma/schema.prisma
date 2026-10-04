@@ -1,13 +1,231 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+model application {
+  application_id             BigInt                       @id @default(autoincrement())
+  citizen_id                 BigInt
+  service_id                 BigInt
+  department_id              BigInt
+  status                     String                       @db.VarChar(50)
+  submitted_at               DateTime?                    @default(now()) @db.Timestamptz(6)
+  updated_at                 DateTime?                    @default(now()) @db.Timestamptz(6)
+  assigned_staff_id          BigInt?
+  completed_at               DateTime?                    @db.Timestamptz(6)
+  description_text           String?
+  citizen                    citizen                      @relation(fields: [citizen_id], references: [citizen_id], onUpdate: NoAction, map: "fk_application_citizen")
+  department                 department                   @relation(fields: [department_id], references: [department_id], onUpdate: NoAction, map: "fk_application_department")
+  service                    service                      @relation(fields: [service_id], references: [service_id], onUpdate: NoAction, map: "fk_application_service")
+  staff                      staff?                       @relation(fields: [assigned_staff_id], references: [staff_id], onUpdate: NoAction, map: "fk_application_staff")
+  application_document       application_document[]
+  application_status_history application_status_history[]
+  payment                    payment[]
+}
+
+model application_document {
+  application_document_id BigInt           @id @default(autoincrement())
+  application_id          BigInt
+  document_id             BigInt
+  submitted_at            DateTime?        @default(now()) @db.Timestamptz(6)
+  verified_by             BigInt?
+  verified_at             DateTime?        @db.Timestamptz(6)
+  status                  String?          @db.VarChar(30)
+  application             application      @relation(fields: [application_id], references: [application_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_app_doc_application")
+  citizen_document        citizen_document @relation(fields: [document_id], references: [document_id], onUpdate: NoAction, map: "fk_app_doc_document")
+  staff                   staff?           @relation(fields: [verified_by], references: [staff_id], onUpdate: NoAction, map: "fk_app_doc_verifier")
+}
+
+model application_status_history {
+  history_id     BigInt      @id @default(autoincrement())
+  application_id BigInt
+  old_status     String?     @db.VarChar(50)
+  new_status     String      @db.VarChar(50)
+  changed_by     BigInt?
+  changed_at     DateTime?   @default(now()) @db.Timestamptz(6)
+  application    application @relation(fields: [application_id], references: [application_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_history_application")
+  staff          staff?      @relation(fields: [changed_by], references: [staff_id], onUpdate: NoAction, map: "fk_history_staff")
+}
+
+model authentication_credentials {
+  credential_id   BigInt    @id @default(autoincrement())
+  citizen_id      BigInt
+  credential_type String    @db.VarChar(50)
+  credential_hash String    @db.VarChar(255)
+  active_status   Boolean?  @default(true)
+  created_at      DateTime? @default(now()) @db.Timestamptz(6)
+  last_used       DateTime? @db.Timestamptz(6)
+  citizen         citizen   @relation(fields: [citizen_id], references: [citizen_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_auth_citizen")
+}
+
+model citizen {
+  citizen_id                 BigInt                       @id @default(autoincrement())
+  national_id_number         String                       @unique @db.VarChar(50)
+  first_name                 String                       @db.VarChar(100)
+  last_name                  String                       @db.VarChar(100)
+  date_of_birth              DateTime                     @db.Date
+  gender                     String                       @db.VarChar(20)
+  citizenship_status         String?                      @db.VarChar(50)
+  contact_email              String?                      @db.VarChar(150)
+  phone                      String?                      @db.VarChar(20)
+  address                    String?
+  creation_time              DateTime?                    @default(now()) @db.Timestamptz(6)
+  updated_at                 DateTime?                    @default(now()) @db.Timestamptz(6)
+  application                application[]
+  authentication_credentials authentication_credentials[]
+  citizen_document           citizen_document[]
+  citizen_profile            citizen_profile?
+  identity_request           identity_request[]
+  payment                    payment[]
+}
+
+model citizen_document {
+  document_id          BigInt                 @id @default(autoincrement())
+  citizen_id           BigInt
+  document_type        String                 @db.VarChar(50)
+  storage_key          String                 @db.VarChar(255)
+  mime_type            String                 @db.VarChar(100)
+  status               String                 @db.VarChar(30)
+  uploaded_at          DateTime?              @default(now()) @db.Timestamptz(6)
+  verified_by          BigInt?
+  verified_at          DateTime?              @db.Timestamptz(6)
+  application_document application_document[]
+  citizen              citizen                @relation(fields: [citizen_id], references: [citizen_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_document_citizen")
+  staff                staff?                 @relation(fields: [verified_by], references: [staff_id], onUpdate: NoAction, map: "fk_document_verifier")
+}
+
+model citizen_profile {
+  profile_id         BigInt    @id @default(autoincrement())
+  citizen_id         BigInt    @unique
+  preferred_language String?   @db.VarChar(10)
+  account_status     String?   @db.VarChar(30)
+  last_login         DateTime? @db.Timestamptz(6)
+  citizen            citizen   @relation(fields: [citizen_id], references: [citizen_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_profile_citizen")
+}
+
+model department {
+  department_id    BigInt             @id @default(autoincrement())
+  ministry_id      BigInt
+  department_name  String             @db.VarChar(150)
+  department_code  String             @unique @db.VarChar(30)
+  application      application[]
+  ministry         ministry           @relation(fields: [ministry_id], references: [ministry_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_department_ministry")
+  identity_request identity_request[]
+  service          service[]
+  staff            staff[]
+}
+
+model identity_request {
+  request_id    BigInt     @id @default(autoincrement())
+  department_id BigInt
+  citizen_id    BigInt
+  requested_by  BigInt
+  requested_at  DateTime?  @default(now()) @db.Timestamptz(6)
+  responded_at  DateTime?  @db.Timestamptz(6)
+  citizen       citizen    @relation(fields: [citizen_id], references: [citizen_id], onUpdate: NoAction, map: "fk_id_req_citizen")
+  department    department @relation(fields: [department_id], references: [department_id], onUpdate: NoAction, map: "fk_id_req_department")
+  staff         staff      @relation(fields: [requested_by], references: [staff_id], onUpdate: NoAction, map: "fk_id_req_staff")
+}
+
+model ministry {
+  ministry_id   BigInt       @id @default(autoincrement())
+  ministry_name String       @unique @db.VarChar(150)
+  ministry_code String       @unique @db.VarChar(20)
+  department    department[]
+  staff         staff[]
+}
+
+model payment {
+  payment_id            BigInt      @id @default(autoincrement())
+  application_id        BigInt
+  citizen_id            BigInt
+  amount                Decimal     @db.Decimal(12, 2)
+  currency              String?     @db.VarChar(10)
+  payment_method        String?     @db.VarChar(50)
+  transaction_reference String?     @unique @db.VarChar(100)
+  paid_at               DateTime?   @default(now()) @db.Timestamptz(6)
+  receipt_number        String?     @db.VarChar(50)
+  application           application @relation(fields: [application_id], references: [application_id], onUpdate: NoAction, map: "fk_payment_application")
+  citizen               citizen     @relation(fields: [citizen_id], references: [citizen_id], onUpdate: NoAction, map: "fk_payment_citizen")
+  receipt               receipt?
+}
+
+model permission {
+  permission_id   BigInt            @id @default(autoincrement())
+  permission_name String            @unique @db.VarChar(100)
+  resource        String            @db.VarChar(100)
+  action          String            @db.VarChar(50)
+  role_permission role_permission[]
+}
+
+model receipt {
+  receipt_id        BigInt    @id @default(autoincrement())
+  payment_id        BigInt    @unique
+  receipt_number    String    @unique @db.VarChar(50)
+  issued_at         DateTime? @default(now()) @db.Timestamptz(6)
+  verification_code String    @unique @db.VarChar(64)
+  payment           payment   @relation(fields: [payment_id], references: [payment_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_receipt_payment")
+}
+
+model role {
+  role_id         BigInt            @id @default(autoincrement())
+  role_name       String            @unique @db.VarChar(100)
+  role_permission role_permission[]
+  staff_role      staff_role[]
+}
+
+model role_permission {
+  role_id       BigInt
+  permission_id BigInt
+  permission    permission @relation(fields: [permission_id], references: [permission_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_role_perm_permission")
+  role          role       @relation(fields: [role_id], references: [role_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_role_perm_role")
+
+  @@id([role_id, permission_id])
+}
+
+model service {
+  service_id           BigInt        @id @default(autoincrement())
+  department_id        BigInt
+  name                 String        @db.VarChar(150)
+  code                 String        @unique @db.VarChar(30)
+  processing_time_days Int?
+  fee_amount           Decimal?      @db.Decimal(12, 2)
+  available_online     Boolean?
+  application          application[]
+  department           department    @relation(fields: [department_id], references: [department_id], onUpdate: NoAction, map: "fk_service_department")
+}
+
+model staff {
+  staff_id                                 BigInt                       @id @default(autoincrement())
+  ministry_id                              BigInt
+  department_id                            BigInt
+  employee_number                          String                       @unique @db.VarChar(50)
+  first_name                               String                       @db.VarChar(100)
+  last_name                                String                       @db.VarChar(100)
+  email                                    String                       @unique @db.VarChar(150)
+  phone                                    String?                      @db.VarChar(20)
+  application                              application[]
+  application_document                     application_document[]
+  application_status_history               application_status_history[]
+  citizen_document                         citizen_document[]
+  identity_request                         identity_request[]
+  department                               department                   @relation(fields: [department_id], references: [department_id], onUpdate: NoAction, map: "fk_staff_department")
+  ministry                                 ministry                     @relation(fields: [ministry_id], references: [ministry_id], onUpdate: NoAction, map: "fk_staff_ministry")
+  staff_role_staff_role_assigned_byTostaff staff_role[]                 @relation("staff_role_assigned_byTostaff")
+  staff_role_staff_role_staff_idTostaff    staff_role[]                 @relation("staff_role_staff_idTostaff")
+}
+
+model staff_role {
+  staff_id                            BigInt
+  role_id                             BigInt
+  assigned_at                         DateTime? @default(now()) @db.Timestamptz(6)
+  assigned_by                         BigInt?   // Must be BigInt? to match staff.staff_id
+  staff_staff_role_assigned_byTostaff staff?    @relation("staff_role_assigned_byTostaff", fields: [assigned_by], references: [staff_id], onUpdate: NoAction, map: "fk_staff_role_assigned_by")
+  role                                role      @relation(fields: [role_id], references: [role_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_staff_role_role")
+  staff_staff_role_staff_idTostaff    staff     @relation("staff_role_staff_idTostaff", fields: [staff_id], references: [staff_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_staff_role_staff")
+
+  @@id([staff_id, role_id])
 }

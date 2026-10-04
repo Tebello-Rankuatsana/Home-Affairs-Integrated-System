@@ -1,0 +1,36 @@
+/* GovServe Lesotho: single stylesheet for the whole app */
+:root{--navy:#0b2545;--blue:#1d4ed8;--gold:#c8a04a;--ink:#0f172a;--mute:#475569;--line:#e2e8f0;--bg:#f8fafc;--r:10px}
+*{box-sizing:border-box}body{margin:0;font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:var(--bg)}
+.big{font-size:19px}h1{font-size:1.7em;margin:.2em 0;color:var(--navy)}h2{font-size:1.1em;margin:0;color:var(--navy)}h3{margin:.2em 0}
+a{color:var(--blue)}:focus-visible{outline:3px solid #f59e0b;outline-offset:2px}small{display:block;color:var(--mute)}.muted{color:var(--mute)}
+.skip{position:absolute;left:-999px}.skip:focus{left:8px;top:8px;background:#fff;padding:8px;z-index:9}
+.hdr{background:var(--navy);color:#fff;display:flex;justify-content:space-between;align-items:center;padding:10px 20px;border-bottom:3px solid var(--gold);flex-wrap:wrap;gap:8px}
+.brand{display:flex;gap:10px;align-items:center}.brand small{color:#cbd5e1}.crest{background:var(--gold);color:var(--navy);font-weight:800;border-radius:8px;padding:8px}
+.hdr-r{display:flex;gap:8px;align-items:center}.who small{color:#cbd5e1}.muted-l{color:#cbd5e1}
+.body{display:flex;min-height:calc(100vh - 70px)}.side{width:220px;background:#fff;border-right:1px solid var(--line);padding:16px 10px;flex-shrink:0}
+.side a{display:block;padding:10px 12px;border-radius:8px;color:var(--ink);text-decoration:none;font-weight:500;margin-bottom:2px}
+.side a.active{background:#eff6ff;color:var(--blue);font-weight:700;box-shadow:inset 4px 0 var(--blue)}main{flex:1;padding:24px 28px;min-width:0;max-width:1200px}
+.card{background:#fff;border:1px solid var(--line);border-radius:var(--r);margin:16px 0}.card-h{display:flex;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line)}.card-b{padding:18px}.card>.card-b{padding:18px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
+.stat{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:16px}.stat b{display:block;font-size:2em;color:var(--navy)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 16px;min-height:44px;border-radius:8px;border:1px solid #94a3b8;background:#fff;color:var(--ink);font:inherit;font-weight:600;cursor:pointer;text-decoration:none}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}.btn.danger{background:#b91c1c;border-color:#b91c1c;color:#fff}.btn.ghost{border-color:transparent;background:none}.btn.light{color:#fff}.btn.block{width:100%;margin-top:8px}.btn:disabled{opacity:.5;cursor:not-allowed}
+.badge{display:inline-flex;gap:5px;padding:3px 10px;border-radius:99px;font-size:.8em;font-weight:700;border:1px solid}
+.badge.blue{background:#eff6ff;color:#1e40af;border-color:#bfdbfe}.badge.green{background:#f0fdf4;color:#166534;border-color:#bbf7d0}.badge.amber{background:#fffbeb;color:#92400e;border-color:#fde68a}.badge.red{background:#fef2f2;color:#991b1b;border-color:#fecaca}.badge.purple{background:#f5f3ff;color:#5b21b6;border-color:#ddd6fe}
+.field{margin-bottom:16px}.field label{display:block;font-weight:600}.input{display:block;width:100%;padding:10px 12px;min-height:44px;margin-top:6px;border:1px solid #94a3b8;border-radius:8px;font:inherit;background:#fff}.err{color:#b91c1c;margin:6px 0 0;font-weight:600}
+.check{display:flex;gap:10px;margin:16px 0;align-items:flex-start}.check input{width:22px;height:22px}
+.filters{display:flex;gap:10px;flex-wrap:wrap}.filters .input{flex:1;min-width:200px}
+.table{width:100%;border-collapse:collapse}.table th,.table td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}.table th{font-size:.8em;text-transform:uppercase;color:var(--mute)}.card:has(.table){overflow-x:auto}
+.row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);color:inherit;text-decoration:none}.row:last-child{border:0}
+progress{width:100%;height:8px;accent-color:var(--blue)}
+.kv{margin:0}.kv div{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line)}.kv dt{color:var(--mute)}.kv dd{margin:0;font-weight:600}.locked{color:var(--mute);font-weight:400}
+.callout{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:14px 16px;border-radius:var(--r);border:1px solid}.callout.ok{background:#f0fdf4;border-color:#bbf7d0;color:#166534}.callout.warn{background:#fffbeb;border-color:#fde68a;color:#92400e}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+.steps{display:flex;gap:16px;list-style:none;padding:0;flex-wrap:wrap}.steps li{display:flex;gap:8px;align-items:center;color:var(--mute);font-weight:600}.steps span{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;border:2px solid #94a3b8}
+.steps .now{color:var(--navy)}.steps .now span{background:var(--blue);border-color:var(--blue);color:#fff}.steps .done span{background:#16a34a;border-color:#16a34a;color:#fff}
+.timeline{list-style:none;margin:0;padding-left:20px;border-left:3px solid var(--line)}.timeline li{padding:0 0 16px 12px}
+.toast{position:fixed;bottom:20px;right:20px;background:var(--navy);color:#fff;padding:14px 18px;border-radius:var(--r);box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:20}
+.auth{display:grid;grid-template-columns:1fr 1fr;min-height:100vh}.auth aside{background:linear-gradient(150deg,var(--navy),#1d4e89);color:#fff;padding:48px}.auth aside h1{color:#fff}.auth aside ul{list-style:none;padding:0;line-height:2}
+.auth main{display:flex;align-items:center;justify-content:center}.auth form{width:100%;max-width:420px}.chips{display:flex;gap:8px;flex-wrap:wrap}.chip{border:1px solid #94a3b8;background:#fff;border-radius:99px;padding:8px 14px;min-height:40px;cursor:pointer;font:inherit}
+@media(max-width:800px){.auth,.grid2{grid-template-columns:1fr}.auth aside{padding:24px}.body{flex-direction:column}.side{width:auto;display:flex;overflow-x:auto;border:0;border-bottom:1px solid var(--line)}.side a{white-space:nowrap}main{padding:16px}}
+@media(prefers-reduced-motion:no-preference){.btn,.card{transition:box-shadow .15s}}
