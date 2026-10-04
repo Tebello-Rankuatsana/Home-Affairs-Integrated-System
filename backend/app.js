@@ -4,10 +4,10 @@ import cors from 'cors';
 import swaggerUi from 'swagger-ui-express';
 import passport from './passport.js';
 import routes from './routes/index.js';
-import { openapi } from './openapi.js';
+// import { openapi } from './openapi.js';
 import { config } from './config.js';
-import { globalLimiter } from './middleware/rateLimit.js';
-import { notFound, errorHandler } from './middleware/error.js';
+// import { globalLimiter } from './middleware/rateLimit.js';
+// import { notFound, errorHandler } from './middleware/error.js';
 
 export function createApp() {
   const app = express();
