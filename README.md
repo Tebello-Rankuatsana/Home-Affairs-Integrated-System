@@ -2,9 +2,9 @@
 
 
 ```
-  cd Frontend
-  npm install
-  npm run dev 
+cd Frontend
+npm install
+npm run dev 
 ```
 # Government Services Platform: Backend Prototype
 
