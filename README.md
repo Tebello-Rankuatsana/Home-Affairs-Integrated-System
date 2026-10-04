@@ -1,7 +1,11 @@
 # Government Services Platform: Frontend Prototype
 
 
-
+```
+  cd Frontend
+  npm install
+  npm run dev 
+```
 # Government Services Platform: Backend Prototype
 
 Express + Prisma + PostgreSQL + Redis (JWT/Passport auth, RBAC, audit log).
