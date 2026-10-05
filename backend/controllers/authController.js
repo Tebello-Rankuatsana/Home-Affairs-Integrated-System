@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import * as auth from '../services/authService.js';
 import { ctx } from './util.js';
+import { httpError } from '../middleware/error.js';
 
 const nationalId = z.string().min(5).max(20);
 
@@ -17,4 +18,11 @@ export async function verifyOtp(req, res) {
 export async function staffLogin(req, res) {
   const body = z.object({ email: z.string().email(), password: z.string().min(1) }).parse(req.body);
   res.json(await auth.staffLogin(ctx(req), body));
+}
+
+export async function logout(req, res) {
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+  if (!token) throw httpError(401, 'Missing token');
+  res.json(await auth.logout(ctx(req), token));
 }
