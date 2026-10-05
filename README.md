@@ -1,7 +1,11 @@
-## main is the default branch not master
-## but push to the master branch before merging with the main branch
+# Government Services Platform: Frontend Prototype
 
 
+```
+cd Frontend
+npm install
+npm run dev 
+```
 # Government Services Platform: Backend Prototype
 
 Express + Prisma + PostgreSQL + Redis (JWT/Passport auth, RBAC, audit log).
