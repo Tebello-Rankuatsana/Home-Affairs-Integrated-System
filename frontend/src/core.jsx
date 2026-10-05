@@ -58,7 +58,7 @@ export const useApp = () => useContext(Ctx);
 export function Provider({ children }) {
   const [user, setUser] = useState(null);
   const [lang, setLang] = useState('en');
-  const [big, setBig] = useState(false);
+  const [textScale, setTextScale] = useState(0);
   const [apps, setApps] = useState(SEED);
   const [appts, setAppts] = useState([{ id: 1, nid: P1.nid, svc: 'dl', branch: 'Maseru', date: '2026-10-08', slot: '09:30' }]);
   const [notes, setNotes] = useState([{ id: 1, t: '2026-09-23 10:15', msg: 'GS-1002 needs a clearer photograph. Please upload a new one.', read: false }]);
@@ -97,7 +97,7 @@ export function Provider({ children }) {
   const book = (a) => { setAppts((x) => [...x, { id: Date.now(), nid: user.nid, ...a }]); log('Appointment booked', `${svcOf(a.svc).name} · ${a.branch} ${a.date} ${a.slot}`); notify(`Appointment confirmed: ${a.branch}, ${a.date} at ${a.slot}.`); flash('Appointment confirmed'); };
   const setUserField = (id, k, v) => { setUsers((us) => us.map((u) => (u.id === id ? { ...u, [k]: v } : u))); log('User access changed', `User #${id}: ${k} → ${v}`); };
 
-  const v = { user, lang, setLang, big, setBig, apps, appts, notes, setNotes, audit, users, toast, t, login, logout, submit, decide, respond, book, log, flash, setUserField };
+  const v = { user, lang, setLang, textScale, setTextScale, apps, appts, notes, setNotes, audit, users, toast, t, login, logout, submit, decide, respond, book, log, flash, setUserField };
   return <Ctx.Provider value={v}>{children}</Ctx.Provider>;
 }
 
@@ -110,19 +110,44 @@ export const Page = ({ title, sub, children }) => (<><h1>{title}</h1>{sub && <p 
 
 /* ---------- App shell (header + role-based sidebar) ---------- */
 export function Shell() {
-  const { user, logout, t, lang, setLang, big, setBig, notes, toast } = useApp();
+  const { user, logout, t, lang, setLang, textScale, setTextScale, notes, toast } = useApp();
   const unread = notes.filter((n) => !n.read).length;
+  const userRoleLabel = user.role === 'staff' ? DEPTS[user.dept] : user.role.charAt(0).toUpperCase() + user.role.slice(1);
+  const adjustTextScale = (delta) => setTextScale((scale) => Math.min(1, Math.max(-1, scale + delta)));
+
   return (
-    <div className={'shell' + (big ? ' big' : '')}>
+    <div className={'shell' + (textScale === 1 ? ' big' : textScale === -1 ? ' small' : '')}>
       <a href="#main" className="skip">Skip to main content</a>
       <header className="hdr">
-        <div className="brand"><span className="crest" aria-hidden="true">LS</span><div><b>GovServe Lesotho</b><small>Integrated Government Services</small></div></div>
+        <div className="brand">
+          <img src="/govserve-logo.svg" alt="GovServe Lesotho" className="brand-logo" />
+          <div className="brand-copy"><b>GovServe Lesotho</b><small>Integrated Government Services</small></div>
+        </div>
         <div className="hdr-r">
-          <button className="btn ghost light" onClick={() => setBig(!big)} aria-pressed={big} aria-label="Toggle larger text">A+</button>
-          <button className="btn ghost light" onClick={() => setLang(lang === 'en' ? 'st' : 'en')} aria-label="Change language">{lang === 'en' ? 'Sesotho' : 'English'}</button>
-          {user.role === 'citizen' && <span className="muted-l">{unread} new</span>}
-          <span className="who">{user.name}<small>{user.role}{user.role === 'staff' ? ' · ' + DEPTS[user.dept] : ''}</small></span>
-          <button className="btn ghost light" onClick={logout}>{t('signout')}</button>
+          <div className="nav-section accessibility" aria-label="Text size controls">
+            <button className="btn ghost light access-btn" type="button" onClick={() => adjustTextScale(-1)} aria-label="Decrease text size">A-</button>
+            <button className="btn ghost light access-btn" type="button" onClick={() => adjustTextScale(1)} aria-label="Increase text size">A+</button>
+          </div>
+          <div className="nav-section language">
+            <button className="btn ghost light" type="button" onClick={() => setLang(lang === 'en' ? 'st' : 'en')} aria-label="Change language">{lang === 'en' ? 'Sesotho' : 'English'}</button>
+          </div>
+          {user.role === 'citizen' && (
+            <div className="nav-section notice">
+              <span className="notice-indicator"><span className="notice-dot" aria-hidden="true"></span>{unread} new</span>
+            </div>
+          )}
+          <div className="nav-section profile">
+            <div className="user-pill">
+              <span className="user-avatar" aria-hidden="true">{user.name.charAt(0)}</span>
+              <div className="user-meta">
+                <span className="user-name">{user.name}</span>
+                <span className="user-role">{userRoleLabel}</span>
+              </div>
+            </div>
+          </div>
+          <div className="nav-section signout">
+            <button className="btn ghost light signout-btn" type="button" onClick={logout}>{t('signout')}</button>
+          </div>
         </div>
       </header>
       <div className="body">
