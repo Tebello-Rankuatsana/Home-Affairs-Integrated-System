@@ -10,7 +10,12 @@ export const config = {
   isProd: process.env.NODE_ENV === 'production',
   trustProxy: bool(process.env.TRUST_PROXY, false),
   demoMode: bool(process.env.DEMO_MODE, false),
-  runWorker: false,
+  
+  // Redis (optional; leave unset for in-memory cache)
+  redisUrl: process.env.REDIS_URL || null,
+
+  // Automatically run workers if explicit or if REDIS_URL exists
+  runWorker: bool(process.env.RUN_WORKER, Boolean(process.env.REDIS_URL)),
 
   // Auth
   jwtSecret: process.env.JWT_SECRET,
@@ -47,7 +52,7 @@ export const config = {
     secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
   },
 
-  // Appointments — every field referenced in appointmentService.js
+  // Appointments —every field referenced in appointmentService.js
   appointments: {
     utcOffsetMinutes: num(process.env.APPOINTMENT_UTC_OFFSET_MINUTES, 120), // SAST = UTC+2
     openHour: num(process.env.APPOINTMENT_OPEN_HOUR, 8),                   // 08:00 local
@@ -58,7 +63,4 @@ export const config = {
     slotCacheTtlSeconds: num(process.env.APPOINTMENT_SLOT_CACHE_TTL_SECONDS, 10),
     avgServiceMinutes: num(process.env.APPOINTMENT_AVG_SERVICE_MINUTES, 15),
   },
-
-  // Redis (optional; leave unset for in-memory cache)
-  redisUrl: process.env.REDIS_URL,
 };
