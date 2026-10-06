@@ -3,7 +3,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import pg from 'pg';
 import { createApp } from './app.js';
 import { config } from './config.js';
-
+import { startWorker } from './queue.js'; 
 
 BigInt.prototype.toJSON = function () {
   return this.toString();
@@ -11,29 +11,21 @@ BigInt.prototype.toJSON = function () {
 
 const { PrismaClient } = pkg;
 
-// Initialize PostgreSQL pool and Prisma adapter
 const pool = new pg.Pool({ connectionString: config.databaseUrl });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
   try {
-    //Verify Database Connection
     await prisma.$connect();
     console.log('Connected to Neon PostgreSQL successfully!');
 
-    // Query Public Schema Tables
-    const tables = await prisma.$queryRaw`
-      SELECT table_name 
-      FROM information_schema.tables 
-      WHERE table_schema = 'public' 
-      ORDER BY table_name;
-    `;
+    // Initialize BullMQ 
+    const worker = startWorker();
+    if (worker) {
+      console.log('BullMQ Background Worker started.');
+    }
 
-    console.log(`Found ${tables.length} tables in public schema.`);
-    console.table(tables);
-
-    //Starting Express App
     const app = createApp();
     app.listen(config.port, () => {
       console.log(`Server running on http://localhost:${config.port}`);
