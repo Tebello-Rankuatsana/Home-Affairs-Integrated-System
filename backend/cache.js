@@ -70,4 +70,3 @@ export const otpAttemptsKey = (nationalId) => `otp:attempts:${nationalId}`;
 export const otpCooldownKey = (nationalId) => `otp:cooldown:${nationalId}`;
 export const slotsKey = (departmentCode, date) => `slots:${departmentCode}:${date}`;
 export const revokedKey = (jti) => `revoked:${jti}`;
-EOF

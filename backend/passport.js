@@ -1,35 +1,36 @@
 import passport from 'passport';
-import pjwt from 'passport-jwt';
+import { Strategy as JwtStrategy, ExtractJwt } from 'passport-jwt';
 import { config } from './config.js';
-import { prisma } from './db.js';
+import { store, revokedKey } from './cache.js';
 
-const { Strategy: JwtStrategy, ExtractJwt } = pjwt;
+const opts = {
+  jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+  secretOrKey: config.jwtSecret,
+  passReqToCallback: true,
+};
 
 passport.use(
-  new JwtStrategy(
-    {
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-      secretOrKey: config.jwtSecret,
-    },
-    async (payload, done) => {
-      try {
-        // Load the user on every request so deactivation and role changes take effect immediately
-        const user = await prisma.user.findUnique({
-          where: { id: payload.sub },
-          include: { department: true },
-        });
-        if (!user || !user.active) return done(null, false);
-        return done(null, {
-          id: user.id,
-          role: user.role,
-          departmentId: user.departmentId,
-          departmentCode: user.department?.code ?? null,
-        });
-      } catch (err) {
-        return done(err, false);
+  new JwtStrategy(opts, async (req, payload, done) => {
+    try {
+      // Check if token JTI has been revoked via /auth/logout
+      if (payload.jti) {
+        const isRevoked = await store.get(revokedKey(payload.jti));
+        if (isRevoked) {
+          return done(null, false);
+        }
       }
-    },
-  ),
+
+      const user = {
+        id: payload.sub,
+        role: payload.role,
+        departmentCode: payload.departmentCode ?? null,
+      };
+
+      return done(null, user);
+    } catch (err) {
+      return done(err, false);
+    }
+  })
 );
 
 export default passport;

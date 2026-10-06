@@ -25,16 +25,19 @@ const ADMIN = requireRole('ADMIN');
 
 const router = Router();
 
-// auth (public, rate limited
+
 router.post('/auth/otp/request', authLimiter, auth.requestOtp);
 router.post('/auth/otp/verify', authLimiter, auth.verifyOtp);
 router.post('/auth/staff/login', authLimiter, auth.staffLogin);
 
-// public endpoints (no auth required)
+
 router.get('/receipts/verify/:receiptNumber', publicLimiter, receipts.verify);
 
-// everything below needs a valid token
+
 router.use(authenticate);
+
+// logout (authenticated)
+router.post('/auth/logout', auth.logout);
 
 // catalog and departments (public)
 router.get('/services', catalog.services);
