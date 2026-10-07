@@ -229,3 +229,22 @@ model staff_role {
 
   @@id([staff_id, role_id])
 }
+
+model Application {
+  // ...existing fields
+  assignedToId String?
+  assignedTo   User?   @relation("AssignedApplications", fields: [assignedToId], references: [id])
+  paymentStatus String @default("UNPAID")
+}
+
+model Document {
+  // ...existing fields
+  reviewDecision String?
+  verifiedAt     DateTime?
+  verifiedById   String?
+}
+
+model User {
+  // ...existing fields
+  assignedApplications Application[] @relation("AssignedApplications")
+}
