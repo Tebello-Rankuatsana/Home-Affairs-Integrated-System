@@ -1,12 +1,39 @@
-// backend/db.js
-import pkg from '@prisma/client';
-import { PrismaPg } from '@prisma/adapter-pg';
-import pg from 'pg';
+import { createApp } from './app.js';
 import { config } from './config.js';
+import { prisma } from './db.js';
+import { startWorker } from './services/queue.js';
 
-const { PrismaClient } = pkg;
+BigInt.prototype.toJSON = function () {
+  return this.toString();
+};
 
-const pool = new pg.Pool({ connectionString: config.databaseUrl });
-const adapter = new PrismaPg(pool);
+async function main() {
+  try {
+    await prisma.$connect();
+    console.log('Connected to the database.');
 
-export const prisma = new PrismaClient({ adapter });
+    const worker = startWorker();
+    if (worker) console.log('Notification worker started.');
+
+    const app = createApp();
+    const server = app.listen(config.port, () => {
+      console.log(`Server running on http://localhost:${config.port}`);
+    });
+
+    const shutdown = async (signal) => {
+      console.log(`Received ${signal}, shutting down.`);
+      server.close(async () => {
+        await prisma.$disconnect();
+        process.exit(0);
+      });
+      setTimeout(() => process.exit(1), 10_000).unref();
+    };
+    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+  } catch (error) {
+    console.error('Startup failed:', error);
+    process.exit(1);
+  }
+}
+
+main();
