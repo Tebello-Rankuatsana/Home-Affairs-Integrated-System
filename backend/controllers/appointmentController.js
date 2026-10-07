@@ -1,10 +1,10 @@
 import { z } from 'zod';
 import * as appointments from '../services/appointmentService.js';
+import { APPOINTMENT_STATUSES } from '../constants.js';
 import { ctx } from './util.js';
 
 const uuid = z.string().uuid();
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD');
-const STATUSES = ['BOOKED', 'CHECKED_IN', 'COMPLETED', 'CANCELLED', 'NO_SHOW'];
 
 export async function slots(req, res) {
   const q = z.object({ departmentCode: z.string().min(1), date }).parse(req.query);
@@ -23,7 +23,9 @@ export async function book(req, res) {
 }
 
 export async function list(req, res) {
-  const q = z.object({ date: date.optional(), status: z.enum(STATUSES).optional() }).parse(req.query);
+  const q = z
+    .object({ date: date.optional(), status: z.enum(APPOINTMENT_STATUSES).optional() })
+    .parse(req.query);
   res.json(await appointments.listAppointments(ctx(req), q));
 }
 
@@ -50,4 +52,9 @@ export async function queue(req, res) {
 
 export async function queuePosition(req, res) {
   res.json(await appointments.getQueuePosition(ctx(req), uuid.parse(req.params.id)));
+}
+
+export async function callNext(req, res) {
+  const body = z.object({ date: date.optional() }).parse(req.body ?? {});
+  res.json(await appointments.callNext(ctx(req), body.date));
 }

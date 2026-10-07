@@ -1,0 +1,473 @@
+
+@host = http://localhost:3000
+@json = application/json
+
+### Demo credentials (from seed.js — override with SEED_PASSWORD)
+@staffEmail    = traffic.staff@gov.example
+@staffPassword = ChangeMe-12345
+@adminEmail    = admin@gov.example
+@adminPassword = ChangeMe-12345
+@officerEmail  = officer@gov.example
+@officerPass   = ChangeMe-12345
+
+### Demo citizens
+@nationalId   = 1990010100001
+@nationalId2  = 1985050500002
+
+###
+###  Health & discovery 
+###
+
+### Health check
+GET {{host}}/health
+
+### Raw OpenAPI document
+GET {{host}}/openapi.json
+
+### Swagger UI (open in a browser, not here)
+# GET {{host}}/docs
+
+
+###
+###  Auth: citizen OTP flow 
+###
+
+# @name otpRequest
+POST {{host}}/auth/otp/request
+Content-Type: {{json}}
+
+{
+  "nationalId": "{{nationalId}}"
+}
+
+###
+# Non-production returns `devOtp`. In production this would fail.
+# @name otpVerify
+POST {{host}}/auth/otp/verify
+Content-Type: {{json}}
+
+{
+  "nationalId": "{{nationalId}}",
+  "code": "{{otpRequest.response.body.$.devOtp}}"
+}
+
+###
+@citizenToken = {{otpVerify.response.body.$.token}}
+
+### Who am I (citizen)
+GET {{host}}/me
+Authorization: Bearer {{citizenToken}}
+
+### Request a second OTP for another citizen (cooldown is 60s per ID)
+POST {{host}}/auth/otp/request
+Content-Type: {{json}}
+
+{
+  "nationalId": "{{nationalId2}}"
+}
+
+### Wrong code — expect 401
+POST {{host}}/auth/otp/verify
+Content-Type: {{json}}
+
+{
+  "nationalId": "{{nationalId}}",
+  "code": "000000"
+}
+
+
+###
+###  Auth: staff / admin 
+###
+
+# @name staffLogin
+POST {{host}}/auth/staff/login
+Content-Type: {{json}}
+
+{
+  "email": "{{staffEmail}}",
+  "password": "{{staffPassword}}"
+}
+
+###
+@staffToken = {{staffLogin.response.body.$.token}}
+
+# @name adminLogin
+POST {{host}}/auth/staff/login
+Content-Type: {{json}}
+
+{
+  "email": "{{adminEmail}}",
+  "password": "{{adminPassword}}"
+}
+
+###
+@adminToken = {{adminLogin.response.body.$.token}}
+
+# @name officerLogin
+POST {{host}}/auth/staff/login
+Content-Type: {{json}}
+
+{
+  "email": "{{officerEmail}}",
+  "password": "{{officerPass}}"
+}
+
+###
+@officerToken = {{officerLogin.response.body.$.token}}
+
+### Bad password — expect 401
+POST {{host}}/auth/staff/login
+Content-Type: {{json}}
+
+{
+  "email": "{{staffEmail}}",
+  "password": "wrong"
+}
+
+### Logout (revokes this token via JTI)
+POST {{host}}/auth/logout
+Authorization: Bearer {{citizenToken}}
+
+### Re-using a revoked token — expect 401
+GET {{host}}/me
+Authorization: Bearer {{citizenToken}}
+
+
+###
+### Catalogue (public, no auth) 
+###
+
+GET {{host}}/services
+
+###
+GET {{host}}/departments
+
+
+###
+### Citizen & identity
+###
+
+### Home Affairs officer updates a citizen record
+PATCH {{host}}/citizens/{{nationalId}}
+Authorization: Bearer {{officerToken}}
+Content-Type: {{json}}
+
+{
+  "address": "12 New Address, Maseru",
+  "phone": "+26658000001"
+}
+
+### Department staff verify identity for one of their applications
+# (Replace applicationId with a real one you submit below.)
+POST {{host}}/identity/verify
+Authorization: Bearer {{staffToken}}
+Content-Type: {{json}}
+
+{
+  "applicationId": "00000000-0000-0000-0000-000000000000"
+}
+
+### Home Affairs officer verify by national ID (purpose: audit)
+POST {{host}}/identity/verify
+Authorization: Bearer {{officerToken}}
+Content-Type: {{json}}
+
+{
+  "nationalId": "{{nationalId}}"
+}
+
+
+###
+###  Applications 
+###
+
+# @name submitApp
+POST {{host}}/applications
+Authorization: Bearer {{citizenToken}}
+Content-Type: {{json}}
+
+{
+  "serviceCode": "DRIVING_LICENCE",
+  "formData": { "vehicleClass": "B" },
+  "documentIds": []
+}
+
+###
+@applicationId = {{submitApp.response.body.$.id}}
+
+### List my applications
+GET {{host}}/applications
+Authorization: Bearer {{citizenToken}}
+
+### List with filter
+GET {{host}}/applications?status=SUBMITTED
+Authorization: Bearer {{citizenToken}}
+
+### Detail
+GET {{host}}/applications/{{applicationId}}
+Authorization: Bearer {{citizenToken}}
+
+### Department staff: move to UNDER_REVIEW
+PATCH {{host}}/applications/{{applicationId}}/status
+Authorization: Bearer {{staffToken}}
+Content-Type: {{json}}
+
+{
+  "status": "UNDER_REVIEW",
+  "note": "Received, starting review."
+}
+
+### Department staff: request more info (note is required)
+PATCH {{host}}/applications/{{applicationId}}/status
+Authorization: Bearer {{staffToken}}
+Content-Type: {{json}}
+
+{
+  "status": "MORE_INFO_NEEDED",
+  "note": "Please provide proof of residence."
+}
+
+### Citizen responds to a MORE_INFO_NEEDED request
+POST {{host}}/applications/{{applicationId}}/respond
+Authorization: Bearer {{citizenToken}}
+Content-Type: {{json}}
+
+{
+  "formData": { "explanation": "Address has not changed." },
+  "note": "Same address"
+}
+
+### Department staff: approve (requires all required documents to be verified)
+PATCH {{host}}/applications/{{applicationId}}/status
+Authorization: Bearer {{staffToken}}
+Content-Type: {{json}}
+
+{
+  "status": "APPROVED",
+  "note": "All requirements met."
+}
+
+### Department staff: reject (note is required)
+PATCH {{host}}/applications/{{applicationId}}/status
+Authorization: Bearer {{staffToken}}
+Content-Type: {{json}}
+
+{
+  "status": "REJECTED",
+  "note": "Documents do not match the applicant."
+}
+
+### Illegal transition — expect 409
+PATCH {{host}}/applications/{{applicationId}}/status
+Authorization: Bearer {{staffToken}}
+Content-Type: {{json}}
+
+{
+  "status": "SUBMITTED"
+}
+
+
+###
+###  Documents 
+###
+
+### Upload — the field name must be `file`.
+# @name uploadDoc
+POST {{host}}/documents
+Authorization: Bearer {{citizenToken}}
+Content-Type: multipart/form-data; boundary=----Boundary
+
+------Boundary
+Content-Disposition: form-data; name="type"
+
+NATIONAL_ID
+------Boundary
+Content-Disposition: form-data; name="file"; filename="id.pdf"
+Content-Type: application/pdf
+
+< ./fixtures/id.pdf
+------Boundary--
+
+###
+@documentId = {{uploadDoc.response.body.$.id}}
+
+### List my documents
+GET {{host}}/documents
+Authorization: Bearer {{citizenToken}}
+
+### Attach to an application
+POST {{host}}/applications/{{applicationId}}/documents/{{documentId}}
+Authorization: Bearer {{citizenToken}}
+
+### Download as the owner
+GET {{host}}/documents/{{documentId}}/download
+Authorization: Bearer {{citizenToken}}
+
+### Download as department staff (audited)
+GET {{host}}/documents/{{documentId}}/download
+Authorization: Bearer {{staffToken}}
+
+### Delete an unattached document
+DELETE {{host}}/documents/{{documentId}}
+Authorization: Bearer {{citizenToken}}
+
+
+###
+###  Appointments & queue 
+###
+
+### Available slots
+GET {{host}}/appointments/slots?departmentCode=TRAFFIC&date=2026-10-12
+Authorization: Bearer {{citizenToken}}
+
+### Book
+# @name bookAppt
+POST {{host}}/appointments
+Authorization: Bearer {{citizenToken}}
+Content-Type: {{json}}
+
+{
+  "departmentCode": "TRAFFIC",
+  "serviceCode": "DRIVING_LICENCE",
+  "startsAt": "2026-10-12T08:00:00.000Z"
+}
+
+###
+@appointmentId = {{bookAppt.response.body.$.id}}
+
+### List mine
+GET {{host}}/appointments
+Authorization: Bearer {{citizenToken}}
+
+### Department queue for today
+GET {{host}}/queue
+Authorization: Bearer {{staffToken}}
+
+### Department queue for a specific day
+GET {{host}}/queue?date=2026-10-12
+Authorization: Bearer {{staffToken}}
+
+### Staff: check-in (only on the day of the appointment, or DEMO_MODE=true)
+POST {{host}}/appointments/{{appointmentId}}/check-in
+Authorization: Bearer {{staffToken}}
+
+### Citizen: my position in the queue
+GET {{host}}/appointments/{{appointmentId}}/queue-position
+Authorization: Bearer {{citizenToken}}
+
+### Staff: complete
+POST {{host}}/appointments/{{appointmentId}}/complete
+Authorization: Bearer {{staffToken}}
+
+### Staff: no-show
+POST {{host}}/appointments/{{appointmentId}}/no-show
+Authorization: Bearer {{staffToken}}
+
+### Citizen: cancel
+POST {{host}}/appointments/{{appointmentId}}/cancel
+Authorization: Bearer {{citizenToken}}
+
+
+###
+###  Notifications 
+###
+
+GET {{host}}/notifications
+Authorization: Bearer {{citizenToken}}
+
+### Unread only
+GET {{host}}/notifications?unread=true
+Authorization: Bearer {{citizenToken}}
+
+### Mark one as read — replace with a real ID from the list above
+PATCH {{host}}/notifications/00000000-0000-0000-0000-000000000000/read
+Authorization: Bearer {{citizenToken}}
+
+
+###
+###  Receipts 
+###
+
+GET {{host}}/receipts
+Authorization: Bearer {{citizenToken}}
+
+### Detail — replace with a real ID
+GET {{host}}/receipts/00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{citizenToken}}
+
+### Public receipt verification (no auth)
+GET {{host}}/receipts/verify/RCT-20261002-A1B2C3
+
+
+###
+###  Admin 
+###
+
+### List users
+GET {{host}}/admin/users
+Authorization: Bearer {{adminToken}}
+
+### Filter
+GET {{host}}/admin/users?role=DEPARTMENT_STAFF&departmentCode=TRAFFIC
+Authorization: Bearer {{adminToken}}
+
+### Create staff
+POST {{host}}/admin/users
+Authorization: Bearer {{adminToken}}
+Content-Type: {{json}}
+
+{
+  "email": "new.traffic@gov.example",
+  "password": "ChangeMe-12345",
+  "role": "DEPARTMENT_STAFF",
+  "departmentCode": "TRAFFIC"
+}
+
+### Update user — replace the id with a real one
+PATCH {{host}}/admin/users/00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{adminToken}}
+Content-Type: {{json}}
+
+{
+  "active": false
+}
+
+### Get identity scopes for a department
+GET {{host}}/admin/departments/TRAFFIC/scopes
+Authorization: Bearer {{adminToken}}
+
+### Set identity scopes
+PUT {{host}}/admin/departments/TRAFFIC/scopes
+Authorization: Bearer {{adminToken}}
+Content-Type: {{json}}
+
+{
+  "fields": ["fullName", "dateOfBirth", "citizenship"]
+}
+
+### Audit log
+GET {{host}}/audit-logs?limit=25
+Authorization: Bearer {{adminToken}}
+
+
+###
+###  Openapi Routes(not yet implemented)
+###
+
+# POST {{host}}/applications/{{applicationId}}/assign
+# POST {{host}}/applications/{{applicationId}}/withdraw
+# POST {{host}}/applications/{{applicationId}}/pay
+# POST {{host}}/applications/{{applicationId}}/documents/{{documentId}}/review
+# GET  {{host}}/payments
+# PATCH {{host}}/me
+# POST {{host}}/citizens
+# PATCH {{host}}/notifications/read-all
+# POST {{host}}/queue/call-next
+# POST {{host}}/admin/departments
+# POST {{host}}/admin/services
+# PATCH {{host}}/admin/services/{{code}}
+
+### Also registered in routes/auth.js (orphaned router — not mounted):
+# POST {{host}}/auth/register
+# POST {{host}}/auth/login

@@ -1,7 +1,6 @@
 import Redis from 'ioredis';
 import { config } from './config.js';
 
-// Fallback store when REDIS_URL is not provided (In-Memory Map)
 class MemoryStore {
   constructor() {
     this.map = new Map();
@@ -26,7 +25,6 @@ class MemoryStore {
     this.map.delete(key);
   }
 
-  // Atomic counter that expires ttlSeconds after creation
   async incr(key, ttlSeconds) {
     const entry = this.map.get(key);
     if (!entry || entry.expires < Date.now()) {
@@ -40,28 +38,22 @@ class MemoryStore {
   }
 }
 
-// Production Redis Store backed by ioredis
-
 class RedisStore {
   constructor(url) {
-    // Configure ioredis with tls options if connection uses rediss://
     const options = {
       maxRetriesPerRequest: null,
       enableReadyCheck: false,
+      lazyConnect: false,
     };
-
-    if (url.startsWith('rediss://')) {
-      options.tls = { rejectUnauthorized: false };
-    }
+    if (url.startsWith('rediss://')) options.tls = { rejectUnauthorized: false };
 
     this.redis = new Redis(url, options);
 
     this.redis.on('error', (err) => {
       console.error('[Redis Cache] Error:', err.message);
     });
-
     this.redis.on('connect', () => {
-      console.log('[Redis Cache] Successfully connected to Redis Cloud.');
+      console.log('[Redis Cache] Connected.');
     });
   }
 
@@ -90,10 +82,8 @@ class RedisStore {
   }
 }
 
-// Instantiate RedisStore if REDIS_URL is provided, otherwise fallback to MemoryStore
 export const store = config.redisUrl ? new RedisStore(config.redisUrl) : new MemoryStore();
 
-// JSON Helpers
 export async function getJSON(key) {
   const raw = await store.get(key);
   return raw ? JSON.parse(raw) : null;
@@ -103,7 +93,6 @@ export function setJSON(key, value, ttlSeconds) {
   return store.set(key, JSON.stringify(value), ttlSeconds);
 }
 
-// Cache Key Builders
 export const identityCacheKey = (nationalId) => `identity:${nationalId}`;
 export const otpKey = (nationalId) => `otp:${nationalId}`;
 export const otpAttemptsKey = (nationalId) => `otp:attempts:${nationalId}`;

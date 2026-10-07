@@ -6,34 +6,24 @@ import { config } from '../config.js';
 import { getJSON, setJSON, store, otpKey, otpCooldownKey, revokedKey } from '../cache.js';
 import { audit } from '../audit.js';
 import { httpError } from '../middleware/error.js';
-import { sendSms } from './messaging.js';
+import { sendSms, sendEmail } from './messaging.js';
+import { t, languageFor } from '../i18n.js';
 
 const GENERIC_OTP_MESSAGE = 'If this ID is registered, a one-time code has been sent.';
 
-export function signToken(actor) {
+export function signToken({ type, id, role, departmentCode = null }) {
   const jti = crypto.randomUUID();
-  const token = jwt.sign(
-    { 
-      role: actor.role,
-      departmentCode: actor.departmentCode ?? null,
-      jti,
-    }, 
-    config.jwtSecret, 
-    {
-      subject: actor.id.toString(),
-      expiresIn: config.jwtExpiresIn,
-    }
+  return jwt.sign(
+    { type, role, departmentCode, jti },
+    config.jwtSecret,
+    { subject: String(id), expiresIn: config.jwtExpiresIn }
   );
-  return token;
 }
 
-const actorOf = (id, role, departmentCode = null) => ({ 
-  id: id.toString(), 
-  role, 
-  departmentCode 
-});
+function actorOf({ type, id, role, departmentCode = null }) {
+  return { type, id: String(id), role, departmentCode };
+}
 
-// Always answers the same way to prevent ID enumeration
 export async function requestOtp(ctx, nationalId) {
   const body = { message: GENERIC_OTP_MESSAGE };
 
@@ -41,8 +31,8 @@ export async function requestOtp(ctx, nationalId) {
   await store.set(otpCooldownKey(nationalId), '1', config.otpCooldownSeconds);
 
   const citizen = await prisma.citizen.findUnique({
-    where: { national_id_number: nationalId },
-    include: { citizen_profile: true },
+    where: { nationalIdNumber: nationalId },
+    include: { profile: true },
   });
 
   if (citizen) {
@@ -50,9 +40,18 @@ export async function requestOtp(ctx, nationalId) {
     await setJSON(otpKey(nationalId), { code, attempts: 0 }, config.otpTtlSeconds);
 
     if (citizen.phone) {
-      await sendSms(citizen.phone, `Your one-time code is ${code}. It expires in 5 minutes.`);
+      const lang = languageFor(citizen.profile);
+      const text = t(lang, 'otp.sms', { code, minutes: Math.round(config.otpTtlSeconds / 60) });
+      await sendSms(citizen.phone, text);
     }
-
+    if (citizen.contactEmail) {
+      const lang = languageFor(citizen.profile);
+      await sendEmail(
+        citizen.contactEmail,
+        t(lang, 'otp.email.subject'),
+        t(lang, 'otp.email.body', { code, minutes: Math.round(config.otpTtlSeconds / 60) })
+      );
+    }
     if (!config.isProd || config.demoMode) body.devOtp = code;
   }
 
@@ -69,7 +68,9 @@ export async function verifyOtp(ctx, { nationalId, code }) {
     throw httpError(429, 'Too many attempts. Request a new code.');
   }
 
-  const matches = crypto.timingSafeEqual(Buffer.from(entry.code), Buffer.from(code));
+  const a = Buffer.from(entry.code);
+  const b = Buffer.from(code);
+  const matches = a.length === b.length && crypto.timingSafeEqual(a, b);
   if (!matches) {
     entry.attempts += 1;
     await setJSON(key, entry, config.otpTtlSeconds);
@@ -79,60 +80,80 @@ export async function verifyOtp(ctx, { nationalId, code }) {
   await store.del(key);
 
   const citizen = await prisma.citizen.findUnique({
-    where: { national_id_number: nationalId },
+    where: { nationalIdNumber: nationalId },
   });
-
   if (!citizen) throw httpError(401, 'Invalid or expired code');
 
-  const actor = actorOf(citizen.citizen_id, 'CITIZEN');
+  await prisma.citizenProfile.upsert({
+    where: { citizenId: citizen.citizenId },
+    update: { lastLogin: new Date() },
+    create: { citizenId: citizen.citizenId, lastLogin: new Date() },
+  });
 
-  await audit(ctx, { action: 'LOGIN', resourceType: 'Citizen', resourceId: citizen.citizen_id.toString() }, actor);
+  const actor = actorOf({ type: 'CITIZEN', id: citizen.citizenId, role: 'CITIZEN' });
+  await audit(ctx, { action: 'LOGIN', resourceType: 'citizen', resourceId: citizen.citizenId }, actor);
 
-  return { token: signToken(actor), role: 'CITIZEN' };
+  return {
+    token: signToken(actor),
+    role: 'CITIZEN',
+    user: {
+      id: String(citizen.citizenId),
+      nationalId: citizen.nationalIdNumber,
+      firstName: citizen.firstName,
+      lastName: citizen.lastName,
+    },
+  };
 }
 
 export async function staffLogin(ctx, { email, password }) {
-  const staffMember = await prisma.staff.findUnique({
+  const staff = await prisma.staff.findUnique({
     where: { email },
     include: {
       department: true,
-      staff_role_staff_role_staff_idTostaff: {
-        include: { role: true },
-      },
+      staffRoles: { include: { role: true } },
     },
   });
+  if (!staff) throw httpError(401, 'Invalid email or password');
 
-  if (!staffMember) throw httpError(401, 'Invalid email or password');
-
-  const credential = await prisma.authentication_credentials.findFirst({
-    where: {
-      citizen_id: staffMember.staff_id,
-      active_status: true,
-    },
+  const credential = await prisma.authenticationCredential.findFirst({
+    where: { staffId: staff.staffId, activeStatus: true },
   });
-
-  const ok = credential?.credential_hash 
-    ? await bcrypt.compare(password, credential.credential_hash) 
+  const ok = credential?.credentialHash
+    ? await bcrypt.compare(password, credential.credentialHash)
     : false;
-
   if (!ok) throw httpError(401, 'Invalid email or password');
 
-  const roleName = staffMember.staff_role_staff_role_staff_idTostaff[0]?.role?.role_name || 'DEPARTMENT_STAFF';
-  const departmentCode = staffMember.department?.department_code ?? null;
-  const actor = actorOf(staffMember.staff_id, roleName, departmentCode);
+  const roleName = staff.staffRoles[0]?.role?.roleName || 'DEPARTMENT_STAFF';
+  const departmentCode = staff.department?.departmentCode ?? null;
 
-  await audit(ctx, { action: 'LOGIN', resourceType: 'Staff', resourceId: staffMember.staff_id.toString() }, actor);
+  const actor = actorOf({
+    type: 'STAFF',
+    id: staff.staffId,
+    role: roleName,
+    departmentCode,
+  });
+  await audit(ctx, { action: 'LOGIN', resourceType: 'staff', resourceId: staff.staffId }, actor);
 
-  return { token: signToken(actor), role: roleName, department: departmentCode };
+  if (credential) {
+    await prisma.authenticationCredential.update({
+      where: { credentialId: credential.credentialId },
+      data: { lastUsed: new Date() },
+    });
+  }
+
+  return {
+    token: signToken(actor),
+    role: roleName,
+    department: departmentCode,
+    user: { id: String(staff.staffId), email: staff.email, departmentCode },
+  };
 }
 
 export async function logout(ctx, token) {
   const decoded = jwt.decode(token);
   if (decoded?.jti) {
     const ttl = decoded.exp ? decoded.exp - Math.floor(Date.now() / 1000) : 3600;
-    if (ttl > 0) {
-      await store.set(revokedKey(decoded.jti), '1', ttl);
-    }
+    if (ttl > 0) await store.set(revokedKey(decoded.jti), '1', ttl);
   }
   return { message: 'Successfully logged out' };
-};
+}

@@ -1,20 +1,30 @@
 export const HOME_AFFAIRS = 'HOME_AFFAIRS';
+export const CITIZEN_ROLE = 'CITIZEN';
+export const ADMIN_ROLE = 'ADMIN';
 
 export const IDENTITY_FIELDS = ['fullName', 'dateOfBirth', 'citizenship', 'address', 'phone'];
 
-export const APPLICATION_STATUSES = ['SUBMITTED', 'UNDER_REVIEW', 'MORE_INFO_NEEDED', 'APPROVED', 'REJECTED'];
+export const APPLICATION_STATUSES = [
+  'SUBMITTED',
+  'UNDER_REVIEW',
+  'MORE_INFO_NEEDED',
+  'APPROVED',
+  'REJECTED',
+  'WITHDRAWN',
+];
 
-// Application statuses that department staff can manually change/set
 export const STAFF_SETTABLE_STATUSES = ['UNDER_REVIEW', 'APPROVED', 'REJECTED', 'MORE_INFO_NEEDED'];
 
-// Staff-driven transitions
 export const STATUS_TRANSITIONS = {
-  SUBMITTED: ['UNDER_REVIEW'],
-  UNDER_REVIEW: ['APPROVED', 'REJECTED', 'MORE_INFO_NEEDED'],
-  MORE_INFO_NEEDED: [],
+  SUBMITTED: ['UNDER_REVIEW', 'WITHDRAWN'],
+  UNDER_REVIEW: ['APPROVED', 'REJECTED', 'MORE_INFO_NEEDED', 'WITHDRAWN'],
+  MORE_INFO_NEEDED: ['UNDER_REVIEW', 'WITHDRAWN'],
   APPROVED: [],
   REJECTED: [],
+  WITHDRAWN: [],
 };
+
+export const TERMINAL_APPLICATION_STATUSES = ['APPROVED', 'REJECTED', 'WITHDRAWN'];
 
 export const DOCUMENT_TYPES = [
   'NATIONAL_ID',
@@ -25,16 +35,23 @@ export const DOCUMENT_TYPES = [
   'OTHER',
 ];
 
-// Document review decisions
 export const DOCUMENT_REVIEW_DECISIONS = ['APPROVED', 'REJECTED', 'NEEDS_RESUBMISSION'];
 
-// Payment methods supported across the system
-export const PAYMENT_METHODS = ['CREDIT_CARD', 'DEBIT_CARD', 'MOBILE_MONEY', 'BANK_TRANSFER', 'CASH', 'MPESA', 'ECO-CASH'];
+export const PAYMENT_METHODS = [
+  'CREDIT_CARD',
+  'DEBIT_CARD',
+  'MOBILE_MONEY',
+  'BANK_TRANSFER',
+  'CASH',
+  'MPESA',
+  'ECO-CASH',
+];
 
-// Staff roles
+export const RECEIPT_TYPES = ['SUBMISSION', 'PAYMENT', 'COMPLETION'];
+
 export const STAFF_ROLES = ['HOME_AFFAIRS_OFFICER', 'DEPARTMENT_STAFF'];
-export const isStaff = (user) => STAFF_ROLES.includes(user.role);
+export const isStaff = (user) => Boolean(user) && STAFF_ROLES.includes(user.role);
 
-// Appointment statuses
-export const APPOINTMENT_STATUSES = ['BOOKED', 'CHECKED_IN', 'COMPLETED', 'CANCELLED'];
-export const ACTIVE_APPOINTMENT_STATUSES = ['BOOKED', 'CHECKED_IN', 'COMPLETED'];
+export const APPOINTMENT_STATUSES = ['BOOKED', 'CHECKED_IN', 'COMPLETED', 'CANCELLED', 'NO_SHOW'];
+
+export const ACTIVE_APPOINTMENT_STATUSES = ['BOOKED', 'CHECKED_IN'];
