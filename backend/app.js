@@ -13,12 +13,11 @@ export function createApp() {
   const app = express();
   app.set('trust proxy', config.trustProxy);
 
-  // Helmet's default CSP upgrades requests to https, which breaks Swagger UI on plain-http localhost
   const defaults = helmet.contentSecurityPolicy.getDefaultDirectives();
   if (!config.isProd) defaults['upgrade-insecure-requests'] = null;
   app.use(helmet({ contentSecurityPolicy: { directives: defaults } }));
 
-  app.use(cors()); // tighten to the frontend origin before deployment
+  app.use(cors());
   app.use(globalLimiter);
   app.use(express.json({ limit: '1mb' }));
   app.use(passport.initialize());
@@ -30,5 +29,6 @@ export function createApp() {
   app.use(routes);
   app.use(notFound);
   app.use(errorHandler);
+  
   return app;
 }
