@@ -6,245 +6,448 @@ datasource db {
   provider = "postgresql"
 }
 
-model application {
-  application_id             BigInt                       @id @default(autoincrement())
-  citizen_id                 BigInt
-  service_id                 BigInt
-  department_id              BigInt
-  status                     String                       @db.VarChar(50)
-  submitted_at               DateTime?                    @default(now()) @db.Timestamptz(6)
-  updated_at                 DateTime?                    @default(now()) @db.Timestamptz(6)
-  assigned_staff_id          BigInt?
-  completed_at               DateTime?                    @db.Timestamptz(6)
-  description_text           String?
-  citizen                    citizen                      @relation(fields: [citizen_id], references: [citizen_id], onUpdate: NoAction, map: "fk_application_citizen")
-  department                 department                   @relation(fields: [department_id], references: [department_id], onUpdate: NoAction, map: "fk_application_department")
-  service                    service                      @relation(fields: [service_id], references: [service_id], onUpdate: NoAction, map: "fk_application_service")
-  staff                      staff?                       @relation(fields: [assigned_staff_id], references: [staff_id], onUpdate: NoAction, map: "fk_application_staff")
-  application_document       application_document[]
-  application_status_history application_status_history[]
-  payment                    payment[]
+// Ministry
+// Top-level administrative unit. Each department belongs to exactly one ministry.
+
+model Ministry {
+  ministryId   BigInt       @id @default(autoincrement()) @map("ministry_id")
+  ministryName String       @unique @map("ministry_name") @db.VarChar(150)
+  ministryCode String       @unique @map("ministry_code") @db.VarChar(20)
+  departments  Department[]
+  staff        Staff[]
+
+  @@map("ministry")
 }
 
-model application_document {
-  application_document_id BigInt           @id @default(autoincrement())
-  application_id          BigInt
-  document_id             BigInt
-  submitted_at            DateTime?        @default(now()) @db.Timestamptz(6)
-  verified_by             BigInt?
-  verified_at             DateTime?        @db.Timestamptz(6)
-  status                  String?          @db.VarChar(30)
-  application             application      @relation(fields: [application_id], references: [application_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_app_doc_application")
-  citizen_document        citizen_document @relation(fields: [document_id], references: [document_id], onUpdate: NoAction, map: "fk_app_doc_document")
-  staff                   staff?           @relation(fields: [verified_by], references: [staff_id], onUpdate: NoAction, map: "fk_app_doc_verifier")
+// Department
+// Operational unit that owns services and staff. `departmentCode` is the stable
+// identifier the API uses everywhere (TRAFFIC, PASSPORT, HOME_AFFAIRS, ...).
+
+model Department {
+  departmentId     BigInt                  @id @default(autoincrement()) @map("department_id")
+  ministryId       BigInt                  @map("ministry_id")
+  departmentName   String                  @map("department_name") @db.VarChar(150)
+  departmentCode   String                  @unique @map("department_code") @db.VarChar(30)
+  ministry         Ministry                @relation(fields: [ministryId], references: [ministryId], onDelete: Cascade, onUpdate: NoAction, map: "fk_department_ministry")
+  applications     Application[]
+  identityRequests IdentityRequest[]
+  services         ServiceType[]
+  staff            Staff[]
+  appointments     Appointment[]
+  fieldScopes      DepartmentFieldScope[]
+
+  @@map("department")
 }
 
-model application_status_history {
-  history_id     BigInt      @id @default(autoincrement())
-  application_id BigInt
-  old_status     String?     @db.VarChar(50)
-  new_status     String      @db.VarChar(50)
-  changed_by     BigInt?
-  changed_at     DateTime?   @default(now()) @db.Timestamptz(6)
-  application    application @relation(fields: [application_id], references: [application_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_history_application")
-  staff          staff?      @relation(fields: [changed_by], references: [staff_id], onUpdate: NoAction, map: "fk_history_staff")
+// Citizen
+// The authoritative identity record, owned by Home Affairs. Ministry-specific
+// data lives elsewhere; everything here is what other departments may verify.
+
+model Citizen {
+  citizenId         BigInt                     @id @default(autoincrement()) @map("citizen_id")
+  nationalIdNumber  String                     @unique @map("national_id_number") @db.VarChar(50)
+  firstName         String                     @map("first_name") @db.VarChar(100)
+  lastName          String                     @map("last_name") @db.VarChar(100)
+  dateOfBirth       DateTime                   @map("date_of_birth") @db.Date
+  gender            String                     @db.VarChar(20)
+  citizenshipStatus String?                    @map("citizenship_status") @db.VarChar(50)
+  contactEmail      String?                    @map("contact_email") @db.VarChar(150)
+  phone             String?                    @db.VarChar(20)
+  address           String?
+  creationTime      DateTime?                  @default(now()) @map("creation_time") @db.Timestamptz(6)
+  updatedAt         DateTime?                  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  applications      Application[]
+  credentials       AuthenticationCredential[]
+  documents         Document[]
+  profile           CitizenProfile?
+  identityRequests  IdentityRequest[]
+  payments          Payment[]
+  receipts          Receipt[]
+  notifications     Notification[]
+  appointments      Appointment[]
+
+  @@map("citizen")
 }
 
-model authentication_credentials {
-  credential_id   BigInt    @id @default(autoincrement())
-  citizen_id      BigInt
-  credential_type String    @db.VarChar(50)
-  credential_hash String    @db.VarChar(255)
-  active_status   Boolean?  @default(true)
-  created_at      DateTime? @default(now()) @db.Timestamptz(6)
-  last_used       DateTime? @db.Timestamptz(6)
-  citizen         citizen   @relation(fields: [citizen_id], references: [citizen_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_auth_citizen")
+// Citizen profile
+// Extended, non-authoritative data: preferences and account state. One row per citizen.
+
+model CitizenProfile {
+  profileId         BigInt    @id @default(autoincrement()) @map("profile_id")
+  citizenId         BigInt    @unique @map("citizen_id")
+  preferredLanguage String?   @map("preferred_language") @db.VarChar(10)
+  accountStatus     String?   @map("account_status") @db.VarChar(30)
+  lastLogin         DateTime? @map("last_login") @db.Timestamptz(6)
+  citizen           Citizen   @relation(fields: [citizenId], references: [citizenId], onDelete: Cascade, onUpdate: NoAction, map: "fk_profile_citizen")
+
+  @@map("citizen_profile")
 }
 
-model citizen {
-  citizen_id                 BigInt                       @id @default(autoincrement())
-  national_id_number         String                       @unique @db.VarChar(50)
-  first_name                 String                       @db.VarChar(100)
-  last_name                  String                       @db.VarChar(100)
-  date_of_birth              DateTime                     @db.Date
-  gender                     String                       @db.VarChar(20)
-  citizenship_status         String?                      @db.VarChar(50)
-  contact_email              String?                      @db.VarChar(150)
-  phone                      String?                      @db.VarChar(20)
-  address                    String?
-  creation_time              DateTime?                    @default(now()) @db.Timestamptz(6)
-  updated_at                 DateTime?                    @default(now()) @db.Timestamptz(6)
-  application                application[]
-  authentication_credentials authentication_credentials[]
-  citizen_document           citizen_document[]
-  citizen_profile            citizen_profile?
-  identity_request           identity_request[]
-  payment                    payment[]
+// Staff
+// Employees of a ministry and department. Email is the login identifier.
+
+model Staff {
+  staffId        BigInt    @id @default(autoincrement()) @map("staff_id")
+  ministryId     BigInt    @map("ministry_id")
+  departmentId   BigInt    @map("department_id")
+  employeeNumber String    @unique @map("employee_number") @db.VarChar(50)
+  firstName      String    @map("first_name") @db.VarChar(100)
+  lastName       String    @map("last_name") @db.VarChar(100)
+  email          String    @unique @db.VarChar(150)
+  phone          String?   @db.VarChar(20)
+  ministry       Ministry  @relation(fields: [ministryId], references: [ministryId], onUpdate: NoAction, map: "fk_staff_ministry")
+  department     Department @relation(fields: [departmentId], references: [departmentId], onUpdate: NoAction, map: "fk_staff_department")
+
+  applicationsAssigned Application[]               @relation("AssignedStaff")
+  applicationDocuments ApplicationDocument[]
+  applicationHistory   ApplicationStatusHistory[]
+  documentsVerified    Document[]
+  identityRequests     IdentityRequest[]
+  staffRoles           StaffRole[]                 @relation("StaffRoleMember")
+  rolesAssigned        StaffRole[]                 @relation("StaffRoleAssigner")
+  credentials          AuthenticationCredential[]
+
+  @@index([departmentId])
+  @@map("staff")
 }
 
-model citizen_document {
-  document_id          BigInt                 @id @default(autoincrement())
-  citizen_id           BigInt
-  document_type        String                 @db.VarChar(50)
-  storage_key          String                 @db.VarChar(255)
-  mime_type            String                 @db.VarChar(100)
-  status               String                 @db.VarChar(30)
-  uploaded_at          DateTime?              @default(now()) @db.Timestamptz(6)
-  verified_by          BigInt?
-  verified_at          DateTime?              @db.Timestamptz(6)
-  application_document application_document[]
-  citizen              citizen                @relation(fields: [citizen_id], references: [citizen_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_document_citizen")
-  staff                staff?                 @relation(fields: [verified_by], references: [staff_id], onUpdate: NoAction, map: "fk_document_verifier")
+// Authentication credentials
+// Supports both citizen and staff passwords. Exactly one of citizen_id / staff_id
+// should be set for any given row.
+
+model AuthenticationCredential {
+  credentialId   BigInt    @id @default(autoincrement()) @map("credential_id")
+  citizenId      BigInt?   @map("citizen_id")
+  staffId        BigInt?   @map("staff_id")
+  credentialType String    @map("credential_type") @db.VarChar(50)
+  credentialHash String    @map("credential_hash") @db.VarChar(255)
+  activeStatus   Boolean?  @default(true) @map("active_status")
+  createdAt      DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastUsed       DateTime? @map("last_used") @db.Timestamptz(6)
+  citizen        Citizen?  @relation(fields: [citizenId], references: [citizenId], onDelete: Cascade, onUpdate: NoAction, map: "fk_auth_citizen")
+  staff          Staff?    @relation(fields: [staffId], references: [staffId], onDelete: Cascade, onUpdate: NoAction, map: "fk_auth_staff")
+
+  @@index([citizenId])
+  @@index([staffId])
+  @@map("authentication_credentials")
 }
 
-model citizen_profile {
-  profile_id         BigInt    @id @default(autoincrement())
-  citizen_id         BigInt    @unique
-  preferred_language String?   @db.VarChar(10)
-  account_status     String?   @db.VarChar(30)
-  last_login         DateTime? @db.Timestamptz(6)
-  citizen            citizen   @relation(fields: [citizen_id], references: [citizen_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_profile_citizen")
+// Role and permission
+// Roles are attached to staff via staff_role. Permissions are optional fine grained
+// checks; the application currently keys off role names only.
+
+model Role {
+  roleId          BigInt            @id @default(autoincrement()) @map("role_id")
+  roleName        String            @unique @map("role_name") @db.VarChar(100)
+  rolePermissions RolePermission[]
+  staffRoles      StaffRole[]
+
+  @@map("role")
 }
 
-model department {
-  department_id    BigInt             @id @default(autoincrement())
-  ministry_id      BigInt
-  department_name  String             @db.VarChar(150)
-  department_code  String             @unique @db.VarChar(30)
-  application      application[]
-  ministry         ministry           @relation(fields: [ministry_id], references: [ministry_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_department_ministry")
-  identity_request identity_request[]
-  service          service[]
-  staff            staff[]
-}
-
-model identity_request {
-  request_id    BigInt     @id @default(autoincrement())
-  department_id BigInt
-  citizen_id    BigInt
-  requested_by  BigInt
-  requested_at  DateTime?  @default(now()) @db.Timestamptz(6)
-  responded_at  DateTime?  @db.Timestamptz(6)
-  citizen       citizen    @relation(fields: [citizen_id], references: [citizen_id], onUpdate: NoAction, map: "fk_id_req_citizen")
-  department    department @relation(fields: [department_id], references: [department_id], onUpdate: NoAction, map: "fk_id_req_department")
-  staff         staff      @relation(fields: [requested_by], references: [staff_id], onUpdate: NoAction, map: "fk_id_req_staff")
-}
-
-model ministry {
-  ministry_id   BigInt       @id @default(autoincrement())
-  ministry_name String       @unique @db.VarChar(150)
-  ministry_code String       @unique @db.VarChar(20)
-  department    department[]
-  staff         staff[]
-}
-
-model payment {
-  payment_id            BigInt      @id @default(autoincrement())
-  application_id        BigInt
-  citizen_id            BigInt
-  amount                Decimal     @db.Decimal(12, 2)
-  currency              String?     @db.VarChar(10)
-  payment_method        String?     @db.VarChar(50)
-  transaction_reference String?     @unique @db.VarChar(100)
-  paid_at               DateTime?   @default(now()) @db.Timestamptz(6)
-  receipt_number        String?     @db.VarChar(50)
-  application           application @relation(fields: [application_id], references: [application_id], onUpdate: NoAction, map: "fk_payment_application")
-  citizen               citizen     @relation(fields: [citizen_id], references: [citizen_id], onUpdate: NoAction, map: "fk_payment_citizen")
-  receipt               receipt?
-}
-
-model permission {
-  permission_id   BigInt            @id @default(autoincrement())
-  permission_name String            @unique @db.VarChar(100)
+model Permission {
+  permissionId    BigInt            @id @default(autoincrement()) @map("permission_id")
+  permissionName  String            @unique @map("permission_name") @db.VarChar(100)
   resource        String            @db.VarChar(100)
   action          String            @db.VarChar(50)
-  role_permission role_permission[]
+  rolePermissions RolePermission[]
+
+  @@map("permission")
 }
 
-model receipt {
-  receipt_id        BigInt    @id @default(autoincrement())
-  payment_id        BigInt    @unique
-  receipt_number    String    @unique @db.VarChar(50)
-  issued_at         DateTime? @default(now()) @db.Timestamptz(6)
-  verification_code String    @unique @db.VarChar(64)
-  payment           payment   @relation(fields: [payment_id], references: [payment_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_receipt_payment")
+model RolePermission {
+  roleId       BigInt     @map("role_id")
+  permissionId BigInt     @map("permission_id")
+  role         Role       @relation(fields: [roleId], references: [roleId], onDelete: Cascade, onUpdate: NoAction, map: "fk_role_perm_role")
+  permission   Permission @relation(fields: [permissionId], references: [permissionId], onDelete: Cascade, onUpdate: NoAction, map: "fk_role_perm_permission")
+
+  @@id([roleId, permissionId])
+  @@map("role_permission")
 }
 
-model role {
-  role_id         BigInt            @id @default(autoincrement())
-  role_name       String            @unique @db.VarChar(100)
-  role_permission role_permission[]
-  staff_role      staff_role[]
+model StaffRole {
+  staffId    BigInt    @map("staff_id")
+  roleId     BigInt    @map("role_id")
+  assignedAt DateTime? @default(now()) @map("assigned_at") @db.Timestamptz(6)
+  assignedBy BigInt?   @map("assigned_by")
+  member     Staff     @relation("StaffRoleMember", fields: [staffId], references: [staffId], onDelete: Cascade, onUpdate: NoAction, map: "fk_staff_role_staff")
+  assigner   Staff?    @relation("StaffRoleAssigner", fields: [assignedBy], references: [staffId], onUpdate: NoAction, map: "fk_staff_role_assigned_by")
+  role       Role      @relation(fields: [roleId], references: [roleId], onDelete: Cascade, onUpdate: NoAction, map: "fk_staff_role_role")
+
+  @@id([staffId, roleId])
+  @@map("staff_role")
 }
 
-model role_permission {
-  role_id       BigInt
-  permission_id BigInt
-  permission    permission @relation(fields: [permission_id], references: [permission_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_role_perm_permission")
-  role          role       @relation(fields: [role_id], references: [role_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_role_perm_role")
+// Department field scope
+// Which identity fields a department may receive when it verifies a citizen.
+// The full identity record is cached; per request we filter by this table.
 
-  @@id([role_id, permission_id])
+model DepartmentFieldScope {
+  departmentId BigInt     @map("department_id")
+  field        String     @db.VarChar(50)
+  department   Department @relation(fields: [departmentId], references: [departmentId], onDelete: Cascade, onUpdate: NoAction, map: "fk_scope_department")
+
+  @@id([departmentId, field])
+  @@map("department_field_scope")
 }
 
-model service {
-  service_id           BigInt        @id @default(autoincrement())
-  department_id        BigInt
-  name                 String        @db.VarChar(150)
-  code                 String        @unique @db.VarChar(30)
-  processing_time_days Int?
-  fee_amount           Decimal?      @db.Decimal(12, 2)
-  available_online     Boolean?
-  application          application[]
-  department           department    @relation(fields: [department_id], references: [department_id], onUpdate: NoAction, map: "fk_service_department")
+// Service type
+// One row per service a department offers. `code` is the stable API identifier.
+
+model ServiceType {
+  serviceId          BigInt        @id @default(autoincrement()) @map("service_id")
+  departmentId       BigInt        @map("department_id")
+  name               String        @db.VarChar(150)
+  code               String        @unique @db.VarChar(30)
+  processingTimeDays Int?          @map("processing_time_days")
+  feeAmount          Decimal?      @map("fee_amount") @db.Decimal(12, 2)
+  currency           String?       @default("LSL") @db.VarChar(10)
+  availableOnline    Boolean?      @map("available_online")
+  requiredDocuments  String[]      @map("required_documents")
+  department         Department    @relation(fields: [departmentId], references: [departmentId], onUpdate: NoAction, map: "fk_service_department")
+  applications       Application[]
+  appointments       Appointment[]
+
+  @@index([departmentId])
+  @@map("service")
 }
 
-model staff {
-  staff_id                                 BigInt                       @id @default(autoincrement())
-  ministry_id                              BigInt
-  department_id                            BigInt
-  employee_number                          String                       @unique @db.VarChar(50)
-  first_name                               String                       @db.VarChar(100)
-  last_name                                String                       @db.VarChar(100)
-  email                                    String                       @unique @db.VarChar(150)
-  phone                                    String?                      @db.VarChar(20)
-  application                              application[]
-  application_document                     application_document[]
-  application_status_history               application_status_history[]
-  citizen_document                         citizen_document[]
-  identity_request                         identity_request[]
-  department                               department                   @relation(fields: [department_id], references: [department_id], onUpdate: NoAction, map: "fk_staff_department")
-  ministry                                 ministry                     @relation(fields: [ministry_id], references: [ministry_id], onUpdate: NoAction, map: "fk_staff_ministry")
-  staff_role_staff_role_assigned_byTostaff staff_role[]                 @relation("staff_role_assigned_byTostaff")
-  staff_role_staff_role_staff_idTostaff    staff_role[]                 @relation("staff_role_staff_idTostaff")
-}
-
-model staff_role {
-  staff_id                            BigInt
-  role_id                             BigInt
-  assigned_at                         DateTime? @default(now()) @db.Timestamptz(6)
-  assigned_by                         BigInt?
-  staff_staff_role_assigned_byTostaff staff?    @relation("staff_role_assigned_byTostaff", fields: [assigned_by], references: [staff_id], onUpdate: NoAction, map: "fk_staff_role_assigned_by")
-  role                                role      @relation(fields: [role_id], references: [role_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_staff_role_role")
-  staff_staff_role_staff_idTostaff    staff     @relation("staff_role_staff_idTostaff", fields: [staff_id], references: [staff_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_staff_role_staff")
-
-  @@id([staff_id, role_id])
-}
+// Application
+// A citizen's request for a service. `reference` is the human facing identifier
+// shown on receipts and in notifications.
 
 model Application {
-  // ...existing fields
-  assignedToId String?
-  assignedTo   User?   @relation("AssignedApplications", fields: [assignedToId], references: [id])
-  paymentStatus String @default("UNPAID")
+  applicationId   BigInt    @id @default(autoincrement()) @map("application_id")
+  reference       String    @unique @db.VarChar(30)
+  citizenId       BigInt    @map("citizen_id")
+  serviceId       BigInt    @map("service_id")
+  departmentId    BigInt    @map("department_id")
+  status          String    @default("SUBMITTED") @db.VarChar(50)
+  submittedAt     DateTime? @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  updatedAt       DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
+  assignedStaffId BigInt?   @map("assigned_staff_id")
+  completedAt     DateTime? @map("completed_at") @db.Timestamptz(6)
+  descriptionText String?   @map("description_text")
+  formData        Json?     @map("form_data")
+  paymentStatus   String    @default("UNPAID") @map("payment_status") @db.VarChar(20)
+
+  citizen       Citizen                   @relation(fields: [citizenId], references: [citizenId], onUpdate: NoAction, map: "fk_application_citizen")
+  department    Department                @relation(fields: [departmentId], references: [departmentId], onUpdate: NoAction, map: "fk_application_department")
+  service       ServiceType               @relation(fields: [serviceId], references: [serviceId], onUpdate: NoAction, map: "fk_application_service")
+  assignedStaff Staff?                    @relation("AssignedStaff", fields: [assignedStaffId], references: [staffId], onUpdate: NoAction, map: "fk_application_staff")
+  documents     ApplicationDocument[]
+  statusHistory ApplicationStatusHistory[]
+  payments      Payment[]
+  receipts      Receipt[]
+
+  @@index([citizenId])
+  @@index([departmentId, status])
+  @@index([assignedStaffId])
+  @@map("application")
 }
+
+// Application document
+// Link table between an application and an uploaded citizen document.
+// Carries the review decision for that specific attachment.
+
+model ApplicationDocument {
+  applicationDocumentId BigInt       @id @default(autoincrement()) @map("application_document_id")
+  applicationId         BigInt       @map("application_id")
+  documentId            BigInt       @map("document_id")
+  submittedAt           DateTime?    @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  verifiedBy            BigInt?      @map("verified_by")
+  verifiedAt            DateTime?    @map("verified_at") @db.Timestamptz(6)
+  status                String?      @db.VarChar(30)
+  reviewDecision        String?      @map("review_decision") @db.VarChar(30)
+  reviewNote            String?      @map("review_note")
+  application           Application  @relation(fields: [applicationId], references: [applicationId], onDelete: Cascade, onUpdate: NoAction, map: "fk_app_doc_application")
+  document              Document     @relation(fields: [documentId], references: [documentId], onUpdate: NoAction, map: "fk_app_doc_document")
+  verifier              Staff?       @relation(fields: [verifiedBy], references: [staffId], onUpdate: NoAction, map: "fk_app_doc_verifier")
+
+  @@unique([applicationId, documentId])
+  @@index([documentId])
+  @@map("application_document")
+}
+
+// Application status history
+// One row per status transition. `note` carries the officer's reason when the
+// target status is REJECTED or MORE_INFO_NEEDED.
+
+model ApplicationStatusHistory {
+  historyId     BigInt      @id @default(autoincrement()) @map("history_id")
+  applicationId BigInt      @map("application_id")
+  oldStatus     String?     @map("old_status") @db.VarChar(50)
+  newStatus     String      @map("new_status") @db.VarChar(50)
+  changedBy     BigInt?     @map("changed_by")
+  changedAt     DateTime?   @default(now()) @map("changed_at") @db.Timestamptz(6)
+  note          String?
+  application   Application @relation(fields: [applicationId], references: [applicationId], onDelete: Cascade, onUpdate: NoAction, map: "fk_history_application")
+  changedByStaff Staff?     @relation(fields: [changedBy], references: [staffId], onUpdate: NoAction, map: "fk_history_staff")
+
+  @@index([applicationId, changedAt])
+  @@map("application_status_history")
+}
+
+// Citizen document
+// An uploaded file owned by a citizen. Only the storage key lives here; the
+// bytes live in S3/MinIO or on local disk.
 
 model Document {
-  // ...existing fields
-  reviewDecision String?
-  verifiedAt     DateTime?
-  verifiedById   String?
+  documentId     BigInt    @id @default(autoincrement()) @map("document_id")
+  citizenId      BigInt    @map("citizen_id")
+  documentType   String    @map("document_type") @db.VarChar(50)
+  storageKey     String    @map("storage_key") @db.VarChar(255)
+  mimeType       String    @map("mime_type") @db.VarChar(100)
+  originalName   String?   @map("original_name") @db.VarChar(255)
+  sizeBytes      Int?      @map("size_bytes")
+  sha256         String?   @db.VarChar(64)
+  status         String    @default("UPLOADED") @db.VarChar(30)
+  uploadedAt     DateTime? @default(now()) @map("uploaded_at") @db.Timestamptz(6)
+  verifiedBy     BigInt?   @map("verified_by")
+  verifiedAt     DateTime? @map("verified_at") @db.Timestamptz(6)
+  reviewDecision String?   @map("review_decision") @db.VarChar(30)
+  citizen        Citizen   @relation(fields: [citizenId], references: [citizenId], onDelete: Cascade, onUpdate: NoAction, map: "fk_document_citizen")
+  verifier       Staff?    @relation(fields: [verifiedBy], references: [staffId], onUpdate: NoAction, map: "fk_document_verifier")
+  applications   ApplicationDocument[]
+
+  @@index([citizenId])
+  @@map("citizen_document")
 }
 
-model User {
-  // ...existing fields
-  assignedApplications Application[] @relation("AssignedApplications")
+// Identity request
+// Audit trail when a department asks Home Affairs for identity data.
+
+model IdentityRequest {
+  requestId    BigInt    @id @default(autoincrement()) @map("request_id")
+  departmentId BigInt    @map("department_id")
+  citizenId    BigInt    @map("citizen_id")
+  requestedBy  BigInt    @map("requested_by")
+  requestedAt  DateTime? @default(now()) @map("requested_at") @db.Timestamptz(6)
+  respondedAt  DateTime? @map("responded_at") @db.Timestamptz(6)
+  reason       String?
+  fieldsReleased String[] @map("fields_released")
+  citizen      Citizen   @relation(fields: [citizenId], references: [citizenId], onUpdate: NoAction, map: "fk_id_req_citizen")
+  department   Department @relation(fields: [departmentId], references: [departmentId], onUpdate: NoAction, map: "fk_id_req_department")
+  requestedByStaff Staff @relation(fields: [requestedBy], references: [staffId], onUpdate: NoAction, map: "fk_id_req_staff")
+
+  @@index([citizenId])
+  @@index([departmentId, requestedAt])
+  @@map("identity_request")
+}
+
+// Payment
+// A payment against an application. A row exists only after a successful charge.
+
+model Payment {
+  paymentId            BigInt      @id @default(autoincrement()) @map("payment_id")
+  applicationId        BigInt      @map("application_id")
+  citizenId            BigInt      @map("citizen_id")
+  amount               Decimal     @db.Decimal(12, 2)
+  currency             String?     @default("LSL") @db.VarChar(10)
+  paymentMethod        String?     @map("payment_method") @db.VarChar(50)
+  transactionReference String?     @unique @map("transaction_reference") @db.VarChar(100)
+  paidAt               DateTime?   @default(now()) @map("paid_at") @db.Timestamptz(6)
+  receiptNumber        String?     @map("receipt_number") @db.VarChar(50)
+  application          Application @relation(fields: [applicationId], references: [applicationId], onUpdate: NoAction, map: "fk_payment_application")
+  citizen              Citizen     @relation(fields: [citizenId], references: [citizenId], onUpdate: NoAction, map: "fk_payment_citizen")
+  receipt              Receipt?
+
+  @@index([applicationId])
+  @@index([citizenId])
+  @@map("payment")
+}
+
+// Receipt
+// Issued for submissions, payments, and completions. `signature` is an HMAC over
+// the receipt fields so any third party can verify authenticity with the public
+// endpoint, without seeing personal data.
+
+model Receipt {
+  receiptId        BigInt      @id @default(autoincrement()) @map("receipt_id")
+  paymentId        BigInt?     @unique @map("payment_id")
+  applicationId    BigInt?     @map("application_id")
+  citizenId        BigInt?     @map("citizen_id")
+  type             String      @db.VarChar(30)
+  receiptNumber    String      @unique @map("receipt_number") @db.VarChar(50)
+  issuedAt         DateTime?   @default(now()) @map("issued_at") @db.Timestamptz(6)
+  verificationCode String      @unique @map("verification_code") @db.VarChar(64)
+  summary          Json?
+  signature        String?     @db.VarChar(128)
+  payment          Payment?    @relation(fields: [paymentId], references: [paymentId], onDelete: Cascade, onUpdate: NoAction, map: "fk_receipt_payment")
+  application      Application? @relation(fields: [applicationId], references: [applicationId], onUpdate: NoAction, map: "fk_receipt_application")
+  citizen          Citizen?    @relation(fields: [citizenId], references: [citizenId], onUpdate: NoAction, map: "fk_receipt_citizen")
+
+  @@index([citizenId])
+  @@index([applicationId])
+  @@map("receipt")
+}
+
+// Notification
+// In-app, SMS, and email messages for a citizen. The in-app row is written
+// immediately; SMS and email rows stay PENDING until the queue worker delivers them.
+
+model Notification {
+  notificationId BigInt    @id @default(autoincrement()) @map("notification_id")
+  citizenId      BigInt    @map("citizen_id")
+  type           String    @db.VarChar(50)
+  channel        String    @db.VarChar(20)
+  message        String
+  status         String    @default("PENDING") @db.VarChar(20)
+  error          String?
+  readAt         DateTime? @map("read_at") @db.Timestamptz(6)
+  createdAt      DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  citizen        Citizen   @relation(fields: [citizenId], references: [citizenId], onDelete: Cascade, onUpdate: NoAction, map: "fk_notification_citizen")
+
+  @@index([citizenId, channel, readAt])
+  @@index([status])
+  @@map("notification")
+}
+
+// Audit log
+// Append-only. Never store raw personal data in `details`; log field names, not values.
+// `actorId` is polymorphic (a citizen id or a staff id) and is intentionally not a foreign key.
+
+model AuditLog {
+  logId          BigInt    @id @default(autoincrement()) @map("log_id")
+  actorId        BigInt?   @map("actor_id")
+  actorRole      String?   @map("actor_role") @db.VarChar(50)
+  departmentCode String?   @map("department_code") @db.VarChar(30)
+  action         String    @db.VarChar(100)
+  resourceType   String    @map("resource_type") @db.VarChar(100)
+  resourceId     String?   @map("resource_id") @db.VarChar(100)
+  details        Json?
+  ip             String?   @db.VarChar(45)
+  createdAt      DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([action])
+  @@index([actorId])
+  @@index([resourceType, resourceId])
+  @@index([createdAt])
+  @@map("audit_log")
+}
+
+// Appointment
+// A booked slot at a department. Queue fields (queue_number, checked_in_at) are
+// populated on check-in. Slot capacity is enforced in a transaction, not here.
+
+model Appointment {
+  appointmentId BigInt    @id @default(autoincrement()) @map("appointment_id")
+  reference     String    @unique @db.VarChar(30)
+  citizenId     BigInt    @map("citizen_id")
+  departmentId  BigInt    @map("department_id")
+  serviceId     BigInt?   @map("service_id")
+  startsAt      DateTime  @map("starts_at") @db.Timestamptz(6)
+  status        String    @default("BOOKED") @db.VarChar(20)
+  queueNumber   Int?      @map("queue_number")
+  checkedInAt   DateTime? @map("checked_in_at") @db.Timestamptz(6)
+  createdAt     DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
+  citizen       Citizen   @relation(fields: [citizenId], references: [citizenId], onUpdate: NoAction, map: "fk_appointment_citizen")
+  department    Department @relation(fields: [departmentId], references: [departmentId], onUpdate: NoAction, map: "fk_appointment_department")
+  service       ServiceType? @relation(fields: [serviceId], references: [serviceId], onUpdate: NoAction, map: "fk_appointment_service")
+
+  @@index([departmentId, startsAt])
+  @@index([citizenId, startsAt])
+  @@index([status])
+  @@map("appointment")
 }

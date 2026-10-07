@@ -5,41 +5,38 @@ import { notify } from './notificationService.js';
 import { buildReceipt } from './receiptService.js';
 
 async function chargeGateway({ amount, currency, method, reference }) {
-  console.log(
-    `[payment] charging ${amount} ${currency} via ${method} for application ${reference}`
-  );
+  console.log(`[payment] charging ${amount} ${currency} via ${method} for ${reference}`);
   await new Promise((resolve) => setTimeout(resolve, 200));
 }
 
 export async function payApplicationFee(ctx, applicationId, { method }) {
-  const profile = await prisma.citizenProfile.findUnique({ where: { userId: ctx.user.id } });
-  if (!profile) throw httpError(400, 'Profile not found');
+  const citizenId = BigInt(ctx.user.id);
 
   const app = await prisma.application.findUnique({
-    where: { id: applicationId },
-    include: { serviceType: true, receipts: true },
+    where: { applicationId: BigInt(applicationId) },
+    include: { service: true, payments: true },
   });
-  if (!app || app.citizenId !== profile.id) throw httpError(404, 'Application not found');
-  if (!app.serviceType.feeAmount || Number(app.serviceType.feeAmount) <= 0) {
+  if (!app || app.citizenId !== citizenId) throw httpError(404, 'Application not found');
+  if (!app.service.feeAmount || Number(app.service.feeAmount) <= 0) {
     throw httpError(409, 'This service has no fee to pay');
   }
-  if (app.paymentStatus === 'PAID' || app.receipts.some((r) => r.type === 'PAYMENT')) {
+  if (app.paymentStatus === 'PAID' || app.payments.length > 0) {
     throw httpError(409, 'This application has already been paid');
   }
-  if (app.status === 'APPROVED' || app.status === 'REJECTED' || app.status === 'WITHDRAWN') {
+  if (['APPROVED', 'REJECTED', 'WITHDRAWN'].includes(app.status)) {
     throw httpError(409, 'This application is closed');
   }
 
-  const amount = Number(app.serviceType.feeAmount);
-  const currency = app.serviceType.currency ?? 'LSL';
+  const amount = Number(app.service.feeAmount);
+  const currency = app.service.currency ?? 'LSL';
 
   try {
     await chargeGateway({ amount, currency, method, reference: app.reference });
   } catch (err) {
     await audit(ctx, {
       action: 'PAYMENT_FAILED',
-      resourceType: 'Application',
-      resourceId: app.id,
+      resourceType: 'application',
+      resourceId: app.applicationId,
       details: { method, amount, currency },
     });
     throw httpError(402, 'Payment could not be completed');
@@ -48,32 +45,50 @@ export async function payApplicationFee(ctx, applicationId, { method }) {
   const receipt = buildReceipt({
     type: 'PAYMENT',
     reference: app.reference,
-    serviceCode: app.serviceType.code,
-    citizenId: profile.id,
+    serviceCode: app.service.code,
+    citizenId,
   });
 
-  await prisma.$transaction([
-    prisma.receipt.create({
+  const [payment] = await prisma.$transaction([
+    prisma.payment.create({
       data: {
-        ...receipt,
-        applicationId: app.id,
-        summary: { ...receipt.summary, amount, currency, method },
+        applicationId: app.applicationId,
+        citizenId,
+        amount,
+        currency,
+        paymentMethod: method,
+        transactionReference: receipt.receiptNumber,
+        receiptNumber: receipt.receiptNumber,
       },
     }),
     prisma.application.update({
-      where: { id: app.id },
-      data: { paymentStatus: 'PAID' },
+      where: { applicationId: app.applicationId },
+      data: { paymentStatus: 'PAID', updatedAt: new Date() },
     }),
   ]);
 
+  await prisma.receipt.create({
+    data: {
+      paymentId: payment.paymentId,
+      applicationId: app.applicationId,
+      citizenId,
+      type: receipt.type,
+      receiptNumber: receipt.receiptNumber,
+      issuedAt: receipt.issuedAt,
+      verificationCode: receipt.verificationCode,
+      signature: receipt.signature,
+      summary: { ...receipt.summary, amount, currency, method },
+    },
+  });
+
   await audit(ctx, {
     action: 'PAYMENT_COMPLETE',
-    resourceType: 'Application',
-    resourceId: app.id,
+    resourceType: 'application',
+    resourceId: app.applicationId,
     details: { method, amount, currency },
   });
 
-  await notify(profile.id, {
+  await notify(citizenId, {
     type: 'APPLICATION_PAID',
     messageKey: 'application.paid',
     vars: {
@@ -94,11 +109,16 @@ export async function payApplicationFee(ctx, applicationId, { method }) {
 }
 
 export async function listPayments(ctx) {
-  const profile = await prisma.citizenProfile.findUnique({ where: { userId: ctx.user.id } });
-  if (!profile) return [];
-  return prisma.receipt.findMany({
-    where: { citizenId: profile.id, type: 'PAYMENT' },
+  const citizenId = BigInt(ctx.user.id);
+  const receipts = await prisma.receipt.findMany({
+    where: { citizenId, type: 'PAYMENT' },
     orderBy: { issuedAt: 'desc' },
-    select: { id: true, receiptNumber: true, issuedAt: true, summary: true },
+    select: { receiptId: true, receiptNumber: true, issuedAt: true, summary: true },
   });
+  return receipts.map((r) => ({
+    id: String(r.receiptId),
+    receiptNumber: r.receiptNumber,
+    issuedAt: r.issuedAt,
+    summary: r.summary,
+  }));
 }

@@ -54,29 +54,22 @@ function assertBookableDate(dateStr) {
 const newReference = () => `APT-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
 
 async function getDepartment(code) {
-  const dept = await prisma.department.findUnique({ where: { code } });
+  const dept = await prisma.department.findUnique({ where: { departmentCode: code } });
   if (!dept) throw httpError(404, 'Unknown department');
   return dept;
 }
-
-const profileOf = (ctx) => prisma.citizenProfile.findUnique({ where: { userId: ctx.user.id } });
-
-const SHAPE = {
-  department: { select: { code: true, name: true } },
-  serviceType: { select: { code: true, name: true } },
-};
 
 export async function getSlots(departmentCode, dateStr) {
   const dept = await getDepartment(departmentCode);
   assertBookableDate(dateStr);
 
-  const key = slotsKey(dept.code, dateStr);
+  const key = slotsKey(dept.departmentCode, dateStr);
   let used = await getJSON(key);
   if (!used) {
     const { start, end } = dayRange(dateStr);
     const booked = await prisma.appointment.findMany({
       where: {
-        departmentId: dept.id,
+        departmentId: dept.departmentId,
         startsAt: { gte: start, lt: end },
         status: { in: ACTIVE_APPOINTMENT_STATUSES },
       },
@@ -92,7 +85,7 @@ export async function getSlots(departmentCode, dateStr) {
 
   const now = Date.now();
   return {
-    department: dept.code,
+    department: dept.departmentCode,
     date: dateStr,
     slotMinutes: A.slotMinutes,
     slots: slotStartsFor(dateStr).map((s) => {
@@ -117,29 +110,31 @@ export async function bookAppointment(ctx, { departmentCode, serviceCode, starts
   let service = null;
   if (serviceCode) {
     service = await prisma.serviceType.findUnique({ where: { code: serviceCode } });
-    if (!service || service.departmentId !== dept.id) {
+    if (!service || service.departmentId !== dept.departmentId) {
       throw httpError(400, 'That service is not offered by this department');
     }
   }
 
-  const profile = await profileOf(ctx);
-  if (!profile) throw httpError(400, 'Complete your citizen profile first');
-
+  const citizenId = BigInt(ctx.user.id);
   const iso = start.toISOString();
   const { start: dayStart, end: dayEnd } = dayRange(dateStr);
 
   const appointment = await prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`slot:${dept.id}:${iso}`}))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`slot:${dept.departmentId}:${iso}`}))`;
 
     const taken = await tx.appointment.count({
-      where: { departmentId: dept.id, startsAt: start, status: { in: ACTIVE_APPOINTMENT_STATUSES } },
+      where: {
+        departmentId: dept.departmentId,
+        startsAt: start,
+        status: { in: ACTIVE_APPOINTMENT_STATUSES },
+      },
     });
     if (taken >= A.capacityPerSlot) throw httpError(409, 'That time slot is full');
 
     const clash = await tx.appointment.findFirst({
       where: {
-        citizenId: profile.id,
-        departmentId: dept.id,
+        citizenId,
+        departmentId: dept.departmentId,
         startsAt: { gte: dayStart, lt: dayEnd },
         status: { in: ['BOOKED', 'CHECKED_IN'] },
       },
@@ -149,29 +144,33 @@ export async function bookAppointment(ctx, { departmentCode, serviceCode, starts
     return tx.appointment.create({
       data: {
         reference: newReference(),
-        citizenId: profile.id,
-        departmentId: dept.id,
-        serviceTypeId: service?.id ?? null,
+        citizenId,
+        departmentId: dept.departmentId,
+        serviceId: service?.serviceId ?? null,
         startsAt: start,
       },
     });
   });
 
-  await store.del(slotsKey(dept.code, dateStr));
+  await store.del(slotsKey(dept.departmentCode, dateStr));
   await audit(ctx, {
     action: 'APPOINTMENT_BOOK',
-    resourceType: 'Appointment',
-    resourceId: appointment.id,
+    resourceType: 'appointment',
+    resourceId: appointment.appointmentId,
   });
-  await notify(profile.id, {
+  await notify(citizenId, {
     type: 'APPOINTMENT_BOOKED',
     messageKey: 'appointment.booked',
-    vars: { reference: appointment.reference, department: dept.name, when: localDateTime(start) },
+    vars: {
+      reference: appointment.reference,
+      department: dept.departmentName,
+      when: localDateTime(start),
+    },
   });
   return {
-    id: appointment.id,
+    id: String(appointment.appointmentId),
     reference: appointment.reference,
-    department: dept.code,
+    department: dept.departmentCode,
     startsAt: iso,
     status: appointment.status,
   };
@@ -180,33 +179,49 @@ export async function bookAppointment(ctx, { departmentCode, serviceCode, starts
 export async function listAppointments(ctx, { date, status }) {
   const { user } = ctx;
   const where = status ? { status } : {};
-  if (user.role === 'CITIZEN') {
-    const profile = await profileOf(ctx);
-    where.citizenId = profile?.id ?? '__none__';
+
+  if (user.type === 'CITIZEN') {
+    where.citizenId = BigInt(user.id);
   } else if (isStaff(user)) {
-    where.departmentId = user.departmentId;
+    const staff = await prisma.staff.findUnique({
+      where: { staffId: BigInt(user.id) },
+      select: { departmentId: true },
+    });
+    where.departmentId = staff.departmentId;
   }
+
   if (date) {
     const { start, end } = dayRange(date);
     where.startsAt = { gte: start, lt: end };
   }
+
   return prisma.appointment.findMany({
     where,
-    include: isStaff(user) ? { ...SHAPE, citizen: { select: { fullName: true } } } : SHAPE,
+    include: isStaff(user)
+      ? {
+          department: { select: { departmentCode: true, departmentName: true } },
+          service: { select: { code: true, name: true } },
+          citizen: { select: { firstName: true, lastName: true } },
+        }
+      : {
+          department: { select: { departmentCode: true, departmentName: true } },
+          service: { select: { code: true, name: true } },
+        },
     orderBy: { startsAt: 'asc' },
   });
 }
 
 async function loadFor(ctx, id) {
   const appt = await prisma.appointment.findUnique({
-    where: { id },
+    where: { appointmentId: BigInt(id) },
     include: { citizen: true, department: true },
   });
   if (!appt) throw httpError(404, 'Appointment not found');
+
   const { user } = ctx;
   const allowed =
-    (user.role === 'CITIZEN' && appt.citizen.userId === user.id) ||
-    (isStaff(user) && appt.departmentId === user.departmentId);
+    (user.type === 'CITIZEN' && String(appt.citizenId) === user.id) ||
+    (isStaff(user) && appt.department.departmentCode === user.departmentCode);
   if (!allowed) throw httpError(404, 'Appointment not found');
   return appt;
 }
@@ -216,15 +231,22 @@ export async function cancelAppointment(ctx, id) {
   if (appt.status !== 'BOOKED') throw httpError(409, `A ${appt.status} appointment cannot be cancelled`);
   if (appt.startsAt.getTime() <= Date.now()) throw httpError(409, 'This appointment has already started');
 
-  await prisma.appointment.update({ where: { id }, data: { status: 'CANCELLED' } });
-  await store.del(slotsKey(appt.department.code, localDate(appt.startsAt)));
-  await audit(ctx, { action: 'APPOINTMENT_CANCEL', resourceType: 'Appointment', resourceId: id });
+  await prisma.appointment.update({
+    where: { appointmentId: appt.appointmentId },
+    data: { status: 'CANCELLED', updatedAt: new Date() },
+  });
+  await store.del(slotsKey(appt.department.departmentCode, localDate(appt.startsAt)));
+  await audit(ctx, {
+    action: 'APPOINTMENT_CANCEL',
+    resourceType: 'appointment',
+    resourceId: appt.appointmentId,
+  });
   await notify(appt.citizenId, {
     type: 'APPOINTMENT_CANCELLED',
     messageKey: 'appointment.cancelled',
     vars: { reference: appt.reference },
   });
-  return { id, status: 'CANCELLED' };
+  return { id: String(appt.appointmentId), status: 'CANCELLED' };
 }
 
 export async function checkIn(ctx, id) {
@@ -239,7 +261,7 @@ export async function checkIn(ctx, id) {
 
   const updated = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`queue:${appt.departmentId}:${dateStr}`}))`;
-    const fresh = await tx.appointment.findUnique({ where: { id } });
+    const fresh = await tx.appointment.findUnique({ where: { appointmentId: appt.appointmentId } });
     if (fresh.status !== 'BOOKED') throw httpError(409, 'Already checked in');
 
     const numbered = await tx.appointment.findMany({
@@ -250,65 +272,94 @@ export async function checkIn(ctx, id) {
       },
       select: { queueNumber: true },
     });
-    const next = numbered.reduce((max, a) => Math.max(max, a.queueNumber), 0) + 1;
+    const next = numbered.reduce((max, a) => Math.max(max, a.queueNumber ?? 0), 0) + 1;
     return tx.appointment.update({
-      where: { id },
-      data: { status: 'CHECKED_IN', queueNumber: next, checkedInAt: new Date() },
+      where: { appointmentId: appt.appointmentId },
+      data: { status: 'CHECKED_IN', queueNumber: next, checkedInAt: new Date(), updatedAt: new Date() },
     });
   });
 
-  await audit(ctx, { action: 'APPOINTMENT_CHECK_IN', resourceType: 'Appointment', resourceId: id });
+  await audit(ctx, {
+    action: 'APPOINTMENT_CHECK_IN',
+    resourceType: 'appointment',
+    resourceId: appt.appointmentId,
+  });
   await notify(appt.citizenId, {
     type: 'QUEUE_NUMBER',
     messageKey: 'queue.checkedIn',
-    vars: { department: appt.department.name, queueNumber: updated.queueNumber },
+    vars: { department: appt.department.departmentName, queueNumber: updated.queueNumber },
   });
-  return { id, status: updated.status, queueNumber: updated.queueNumber };
+  return { id: String(appt.appointmentId), status: updated.status, queueNumber: updated.queueNumber };
 }
 
 export async function completeAppointment(ctx, id) {
   const appt = await loadFor(ctx, id);
-  if (appt.status !== 'CHECKED_IN') throw httpError(409, 'Only checked-in appointments can be completed');
-  await prisma.appointment.update({ where: { id }, data: { status: 'COMPLETED' } });
-  await audit(ctx, { action: 'APPOINTMENT_COMPLETE', resourceType: 'Appointment', resourceId: id });
-  return { id, status: 'COMPLETED' };
+  if (appt.status !== 'CHECKED_IN') {
+    throw httpError(409, 'Only checked-in appointments can be completed');
+  }
+  await prisma.appointment.update({
+    where: { appointmentId: appt.appointmentId },
+    data: { status: 'COMPLETED', updatedAt: new Date() },
+  });
+  await audit(ctx, {
+    action: 'APPOINTMENT_COMPLETE',
+    resourceType: 'appointment',
+    resourceId: appt.appointmentId,
+  });
+  return { id: String(appt.appointmentId), status: 'COMPLETED' };
 }
 
 export async function markNoShow(ctx, id) {
   const appt = await loadFor(ctx, id);
-  if (appt.status !== 'BOOKED') throw httpError(409, 'Only booked appointments can be marked as no-show');
+  if (appt.status !== 'BOOKED') {
+    throw httpError(409, 'Only booked appointments can be marked as no-show');
+  }
   if (!config.demoMode && appt.startsAt.getTime() > Date.now()) {
     throw httpError(409, 'The appointment time has not been reached yet');
   }
-  await prisma.appointment.update({ where: { id }, data: { status: 'NO_SHOW' } });
-  await store.del(slotsKey(appt.department.code, localDate(appt.startsAt)));
-  await audit(ctx, { action: 'APPOINTMENT_NO_SHOW', resourceType: 'Appointment', resourceId: id });
+  await prisma.appointment.update({
+    where: { appointmentId: appt.appointmentId },
+    data: { status: 'NO_SHOW', updatedAt: new Date() },
+  });
+  await store.del(slotsKey(appt.department.departmentCode, localDate(appt.startsAt)));
+  await audit(ctx, {
+    action: 'APPOINTMENT_NO_SHOW',
+    resourceType: 'appointment',
+    resourceId: appt.appointmentId,
+  });
   await notify(appt.citizenId, {
     type: 'APPOINTMENT_NO_SHOW',
     messageKey: 'appointment.noShow',
     vars: { reference: appt.reference },
   });
-  return { id, status: 'NO_SHOW' };
+  return { id: String(appt.appointmentId), status: 'NO_SHOW' };
 }
 
 export async function getQueue(ctx, dateStr) {
   const date = dateStr ?? localDate(new Date());
   const { start, end } = dayRange(date);
+
+  const staff = await prisma.staff.findUnique({
+    where: { staffId: BigInt(ctx.user.id) },
+    select: { departmentId: true },
+  });
+
   const waiting = await prisma.appointment.findMany({
     where: {
-      departmentId: ctx.user.departmentId,
+      departmentId: staff.departmentId,
       startsAt: { gte: start, lt: end },
       status: 'CHECKED_IN',
     },
-    include: { citizen: { select: { fullName: true } } },
+    include: { citizen: { select: { firstName: true, lastName: true } } },
     orderBy: { queueNumber: 'asc' },
   });
+
   return {
     date,
     waiting: waiting.map((a) => ({
-      id: a.id,
+      id: String(a.appointmentId),
       queueNumber: a.queueNumber,
-      citizen: a.citizen.fullName,
+      citizen: `${a.citizen.firstName} ${a.citizen.lastName}`.trim(),
       checkedInAt: a.checkedInAt,
       reference: a.reference,
     })),
@@ -347,43 +398,44 @@ export async function callNext(ctx, dateStr) {
   const date = dateStr ?? localDate(new Date());
   const { start, end } = dayRange(date);
 
+  const staff = await prisma.staff.findUnique({
+    where: { staffId: BigInt(ctx.user.id) },
+    select: { departmentId: true },
+  });
+
   const result = await prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`queue:${ctx.user.departmentId}:${date}`}))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`queue:${staff.departmentId}:${date}`}))`;
 
     const waiting = await tx.appointment.findMany({
       where: {
-        departmentId: ctx.user.departmentId,
+        departmentId: staff.departmentId,
         startsAt: { gte: start, lt: end },
         status: 'CHECKED_IN',
       },
-      include: { citizen: { select: { fullName: true } } },
+      include: { citizen: { select: { firstName: true, lastName: true } } },
       orderBy: { queueNumber: 'asc' },
     });
 
     if (waiting.length === 0) throw httpError(404, 'Nobody is waiting in the queue');
 
     const [current, nextUp] = waiting;
-    const finished = await tx.appointment.update({
-      where: { id: current.id },
-      data: { status: 'COMPLETED' },
+    await tx.appointment.update({
+      where: { appointmentId: current.appointmentId },
+      data: { status: 'COMPLETED', updatedAt: new Date() },
     });
-
-    return { current, nextUp, finished };
+    return { current, nextUp };
   });
 
   await audit(ctx, {
     action: 'QUEUE_CALL_NEXT',
-    resourceType: 'Appointment',
-    resourceId: result.current.id,
+    resourceType: 'appointment',
+    resourceId: result.current.appointmentId,
   });
 
   await notify(result.current.citizenId, {
     type: 'QUEUE_CALLED',
     messageKey: 'queue.called',
-    vars: {
-      queueNumber: result.current.queueNumber,
-      department: result.current.departmentId,
-    },
+    vars: { queueNumber: result.current.queueNumber, department: result.current.departmentId },
   });
 
   if (result.nextUp) {
@@ -396,15 +448,15 @@ export async function callNext(ctx, dateStr) {
 
   return {
     called: {
-      id: result.current.id,
+      id: String(result.current.appointmentId),
       queueNumber: result.current.queueNumber,
-      citizen: result.current.citizen.fullName,
+      citizen: `${result.current.citizen.firstName} ${result.current.citizen.lastName}`.trim(),
     },
     next: result.nextUp
       ? {
-          id: result.nextUp.id,
+          id: String(result.nextUp.appointmentId),
           queueNumber: result.nextUp.queueNumber,
-          citizen: result.nextUp.citizen.fullName,
+          citizen: `${result.nextUp.citizen.firstName} ${result.nextUp.citizen.lastName}`.trim(),
         }
       : null,
   };

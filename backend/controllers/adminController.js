@@ -9,7 +9,7 @@ const password = z.string().min(10).max(100);
 export async function listUsers(req, res) {
   const q = z
     .object({
-      role: z.enum(['CITIZEN', 'HOME_AFFAIRS_OFFICER', 'DEPARTMENT_STAFF', 'ADMIN']).optional(),
+      role: staffRole.optional(),
       departmentCode: z.string().optional(),
     })
     .parse(req.query);
@@ -23,6 +23,8 @@ export async function createStaff(req, res) {
       password,
       role: staffRole,
       departmentCode: z.string().optional(),
+      firstName: z.string().min(1).max(100).optional(),
+      lastName: z.string().min(1).max(100).optional(),
     })
     .parse(req.body);
   res.status(201).json(await admin.createStaff(ctx(req), body));
@@ -35,6 +37,8 @@ export async function updateUser(req, res) {
       role: staffRole.optional(),
       departmentCode: z.string().nullable().optional(),
       password: password.optional(),
+      firstName: z.string().min(1).max(100).optional(),
+      lastName: z.string().min(1).max(100).optional(),
     })
     .strict()
     .refine((o) => Object.keys(o).length > 0, 'No changes provided')
@@ -56,7 +60,7 @@ export async function createDepartment(req, res) {
     .object({
       code: z.string().min(2).max(40),
       name: z.string().min(2).max(120),
-      ministry: z.string().max(120).optional(),
+      ministryCode: z.string().min(2).max(20),
     })
     .parse(req.body);
   res.status(201).json(await admin.createDepartment(ctx(req), body));
