@@ -116,7 +116,7 @@ const schemas = {
     status: enumStr([...APPOINTMENT_STATUSES, 'NO_SHOW']),
     startsAt: dt,
     queueNumber: int({ nullable: true }),
-    checkedInAt: dt({ nullable: true }),
+    checkedInAt: { ...dt, nullable: true },
     department: obj({ code: str(), name: str() }),
     serviceType: obj({ code: str(), name: str() }, ['code']).nullable,
   }),
@@ -140,7 +140,7 @@ const schemas = {
     id: uuid,
     type: str({ example: 'APPLICATION_STATUS' }),
     message: str(),
-    readAt: dt({ nullable: true }),
+    readAt: { ...dt, nullable: true },
     createdAt: dt,
   }),
 
@@ -195,7 +195,7 @@ const schemas = {
 
   AuditLog: obj({
     id: uuid,
-    actorId: uuid({ nullable: true }),
+    actorId: { ...uuid, nullable: true },
     actorRole: str({ nullable: true }),
     departmentCode: str({ nullable: true }),
     action: str({ example: 'APPLICATION_STATUS_CHANGE' }),
@@ -537,7 +537,7 @@ export const openapi = {
         roles: DEPT, planned: true,
         params: [pathParam('id', 'Application id', uuid)],
         body: body(obj({ assign: bool({ default: true }) })),
-        okSchema: obj({ id: uuid, assignedTo: uuid({ nullable: true }) }),
+        okSchema: obj({ id: uuid, assignedTo: { ...uuid, nullable: true } }),
         errors: [400, 401, 403, 404, 409],
       }),
     },

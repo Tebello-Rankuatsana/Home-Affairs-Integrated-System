@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import * as documents from '../services/documentService.js';
-import { DOCUMENT_TYPES } from '../constants.js';
+import { DOCUMENT_TYPES, DOCUMENT_REVIEW_DECISIONS } from '../constants.js';
 import { ctx } from './util.js';
 
 const uuid = z.string().uuid();
@@ -20,6 +20,18 @@ export async function attach(req, res) {
   const applicationId = uuid.parse(req.params.id);
   const documentId = uuid.parse(req.params.documentId);
   res.json(await documents.attachDocument(ctx(req), applicationId, documentId));
+}
+
+export async function review(req, res) {
+  const body = z
+    .object({
+      decision: z.enum(DOCUMENT_REVIEW_DECISIONS),
+      note: z.string().max(500).optional(),
+    })
+    .parse(req.body);
+  const applicationId = uuid.parse(req.params.id);
+  const documentId = uuid.parse(req.params.documentId);
+  res.json(await documents.reviewDocument(ctx(req), applicationId, documentId, body));
 }
 
 export async function download(req, res) {
