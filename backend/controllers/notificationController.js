@@ -10,3 +10,7 @@ export async function list(req, res) {
 export async function markRead(req, res) {
   res.json(await notifications.markRead(ctx(req), z.string().uuid().parse(req.params.id)));
 }
+
+export async function markAllRead(req, res) {
+  res.json(await notifications.markAllRead(ctx(req)));
+}
