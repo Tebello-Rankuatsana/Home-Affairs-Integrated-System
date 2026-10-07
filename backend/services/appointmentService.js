@@ -11,9 +11,9 @@ const A = config.appointments;
 const OFFSET_MS = A.utcOffsetMinutes * 60_000;
 const DAY_MS = 86_400_000;
 
-// ---- time helpers: opening hours are defined in local time, stored in UTC ----
 const localDate = (d) => new Date(d.getTime() + OFFSET_MS).toISOString().slice(0, 10);
-const localDateTime = (d) => new Date(d.getTime() + OFFSET_MS).toISOString().slice(0, 16).replace('T', ' ');
+const localDateTime = (d) =>
+  new Date(d.getTime() + OFFSET_MS).toISOString().slice(0, 16).replace('T', ' ');
 const parts = (dateStr) => dateStr.split('-').map(Number);
 
 function dayRange(dateStr) {
@@ -46,7 +46,9 @@ function assertBookableDate(dateStr) {
   }
   const today = localDate(new Date());
   const max = localDate(new Date(Date.now() + A.maxDaysAhead * DAY_MS));
-  if (dateStr < today || dateStr > max) throw httpError(400, `Choose a date between ${today} and ${max}`);
+  if (dateStr < today || dateStr > max) {
+    throw httpError(400, `Choose a date between ${today} and ${max}`);
+  }
 }
 
 const newReference = () => `APT-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
@@ -64,18 +66,20 @@ const SHAPE = {
   serviceType: { select: { code: true, name: true } },
 };
 
-// ---- availability ----
 export async function getSlots(departmentCode, dateStr) {
   const dept = await getDepartment(departmentCode);
   assertBookableDate(dateStr);
 
-  // Cached for a few seconds: { slotStartIso: peopleBooked }. Booking itself re-counts inside a transaction.
   const key = slotsKey(dept.code, dateStr);
   let used = await getJSON(key);
   if (!used) {
     const { start, end } = dayRange(dateStr);
     const booked = await prisma.appointment.findMany({
-      where: { departmentId: dept.id, startsAt: { gte: start, lt: end }, status: { in: ACTIVE_APPOINTMENT_STATUSES } },
+      where: {
+        departmentId: dept.id,
+        startsAt: { gte: start, lt: end },
+        status: { in: ACTIVE_APPOINTMENT_STATUSES },
+      },
       select: { startsAt: true },
     });
     used = {};
@@ -99,7 +103,6 @@ export async function getSlots(departmentCode, dateStr) {
   };
 }
 
-// ---- booking ----
 export async function bookAppointment(ctx, { departmentCode, serviceCode, startsAt }) {
   const dept = await getDepartment(departmentCode);
   const start = new Date(startsAt);
@@ -114,14 +117,18 @@ export async function bookAppointment(ctx, { departmentCode, serviceCode, starts
   let service = null;
   if (serviceCode) {
     service = await prisma.serviceType.findUnique({ where: { code: serviceCode } });
-    if (!service || service.departmentId !== dept.id) throw httpError(400, 'That service is not offered by this department');
+    if (!service || service.departmentId !== dept.id) {
+      throw httpError(400, 'That service is not offered by this department');
+    }
   }
+
   const profile = await profileOf(ctx);
+  if (!profile) throw httpError(400, 'Complete your citizen profile first');
+
   const iso = start.toISOString();
   const { start: dayStart, end: dayEnd } = dayRange(dateStr);
 
   const appointment = await prisma.$transaction(async (tx) => {
-    // Serialise bookings for this slot so two people can't take the last place at once
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`slot:${dept.id}:${iso}`}))`;
 
     const taken = await tx.appointment.count({
@@ -151,19 +158,34 @@ export async function bookAppointment(ctx, { departmentCode, serviceCode, starts
   });
 
   await store.del(slotsKey(dept.code, dateStr));
-  await audit(ctx, { action: 'APPOINTMENT_BOOK', resourceType: 'Appointment', resourceId: appointment.id });
+  await audit(ctx, {
+    action: 'APPOINTMENT_BOOK',
+    resourceType: 'Appointment',
+    resourceId: appointment.id,
+  });
   await notify(profile.id, {
     type: 'APPOINTMENT_BOOKED',
-    message: `Appointment ${appointment.reference} confirmed: ${dept.name}, ${localDateTime(start)}.`,
+    messageKey: 'appointment.booked',
+    vars: { reference: appointment.reference, department: dept.name, when: localDateTime(start) },
   });
-  return { id: appointment.id, reference: appointment.reference, department: dept.code, startsAt: iso, status: appointment.status };
+  return {
+    id: appointment.id,
+    reference: appointment.reference,
+    department: dept.code,
+    startsAt: iso,
+    status: appointment.status,
+  };
 }
 
 export async function listAppointments(ctx, { date, status }) {
   const { user } = ctx;
   const where = status ? { status } : {};
-  if (user.role === 'CITIZEN') where.citizenId = (await profileOf(ctx)).id;
-  else if (isStaff(user)) where.departmentId = user.departmentId;
+  if (user.role === 'CITIZEN') {
+    const profile = await profileOf(ctx);
+    where.citizenId = profile?.id ?? '__none__';
+  } else if (isStaff(user)) {
+    where.departmentId = user.departmentId;
+  }
   if (date) {
     const { start, end } = dayRange(date);
     where.startsAt = { gte: start, lt: end };
@@ -176,7 +198,10 @@ export async function listAppointments(ctx, { date, status }) {
 }
 
 async function loadFor(ctx, id) {
-  const appt = await prisma.appointment.findUnique({ where: { id }, include: { citizen: true, department: true } });
+  const appt = await prisma.appointment.findUnique({
+    where: { id },
+    include: { citizen: true, department: true },
+  });
   if (!appt) throw httpError(404, 'Appointment not found');
   const { user } = ctx;
   const allowed =
@@ -194,11 +219,14 @@ export async function cancelAppointment(ctx, id) {
   await prisma.appointment.update({ where: { id }, data: { status: 'CANCELLED' } });
   await store.del(slotsKey(appt.department.code, localDate(appt.startsAt)));
   await audit(ctx, { action: 'APPOINTMENT_CANCEL', resourceType: 'Appointment', resourceId: id });
-  await notify(appt.citizenId, { type: 'APPOINTMENT_CANCELLED', message: `Appointment ${appt.reference} was cancelled.` });
+  await notify(appt.citizenId, {
+    type: 'APPOINTMENT_CANCELLED',
+    messageKey: 'appointment.cancelled',
+    vars: { reference: appt.reference },
+  });
   return { id, status: 'CANCELLED' };
 }
 
-// ---- queue (staff) ----
 export async function checkIn(ctx, id) {
   const appt = await loadFor(ctx, id);
   if (appt.status !== 'BOOKED') throw httpError(409, `A ${appt.status} appointment cannot be checked in`);
@@ -206,6 +234,7 @@ export async function checkIn(ctx, id) {
   if (!config.demoMode && dateStr !== localDate(new Date())) {
     throw httpError(409, 'Check-in is only possible on the day of the appointment');
   }
+
   const { start, end } = dayRange(dateStr);
 
   const updated = await prisma.$transaction(async (tx) => {
@@ -214,7 +243,11 @@ export async function checkIn(ctx, id) {
     if (fresh.status !== 'BOOKED') throw httpError(409, 'Already checked in');
 
     const numbered = await tx.appointment.findMany({
-      where: { departmentId: appt.departmentId, startsAt: { gte: start, lt: end }, queueNumber: { not: null } },
+      where: {
+        departmentId: appt.departmentId,
+        startsAt: { gte: start, lt: end },
+        queueNumber: { not: null },
+      },
       select: { queueNumber: true },
     });
     const next = numbered.reduce((max, a) => Math.max(max, a.queueNumber), 0) + 1;
@@ -227,7 +260,8 @@ export async function checkIn(ctx, id) {
   await audit(ctx, { action: 'APPOINTMENT_CHECK_IN', resourceType: 'Appointment', resourceId: id });
   await notify(appt.citizenId, {
     type: 'QUEUE_NUMBER',
-    message: `You are checked in at ${appt.department.name}. Your queue number is ${updated.queueNumber}.`,
+    messageKey: 'queue.checkedIn',
+    vars: { department: appt.department.name, queueNumber: updated.queueNumber },
   });
   return { id, status: updated.status, queueNumber: updated.queueNumber };
 }
@@ -249,15 +283,23 @@ export async function markNoShow(ctx, id) {
   await prisma.appointment.update({ where: { id }, data: { status: 'NO_SHOW' } });
   await store.del(slotsKey(appt.department.code, localDate(appt.startsAt)));
   await audit(ctx, { action: 'APPOINTMENT_NO_SHOW', resourceType: 'Appointment', resourceId: id });
+  await notify(appt.citizenId, {
+    type: 'APPOINTMENT_NO_SHOW',
+    messageKey: 'appointment.noShow',
+    vars: { reference: appt.reference },
+  });
   return { id, status: 'NO_SHOW' };
 }
 
-// Staff view of the waiting line for their department (default: today)
 export async function getQueue(ctx, dateStr) {
   const date = dateStr ?? localDate(new Date());
   const { start, end } = dayRange(date);
   const waiting = await prisma.appointment.findMany({
-    where: { departmentId: ctx.user.departmentId, startsAt: { gte: start, lt: end }, status: 'CHECKED_IN' },
+    where: {
+      departmentId: ctx.user.departmentId,
+      startsAt: { gte: start, lt: end },
+      status: 'CHECKED_IN',
+    },
     include: { citizen: { select: { fullName: true } } },
     orderBy: { queueNumber: 'asc' },
   });
@@ -273,11 +315,16 @@ export async function getQueue(ctx, dateStr) {
   };
 }
 
-// Citizen view: where am I in the line, and roughly how long?
 export async function getQueuePosition(ctx, id) {
   const appt = await loadFor(ctx, id);
   if (appt.status !== 'CHECKED_IN') {
-    return { status: appt.status, startsAt: appt.startsAt, queueNumber: null, peopleAhead: null, estimatedWaitMinutes: null };
+    return {
+      status: appt.status,
+      startsAt: appt.startsAt,
+      queueNumber: null,
+      peopleAhead: null,
+      estimatedWaitMinutes: null,
+    };
   }
   const { start, end } = dayRange(localDate(appt.startsAt));
   const peopleAhead = await prisma.appointment.count({
@@ -293,5 +340,72 @@ export async function getQueuePosition(ctx, id) {
     queueNumber: appt.queueNumber,
     peopleAhead,
     estimatedWaitMinutes: peopleAhead * A.avgServiceMinutes,
+  };
+}
+
+export async function callNext(ctx, dateStr) {
+  const date = dateStr ?? localDate(new Date());
+  const { start, end } = dayRange(date);
+
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`queue:${ctx.user.departmentId}:${date}`}))`;
+
+    const waiting = await tx.appointment.findMany({
+      where: {
+        departmentId: ctx.user.departmentId,
+        startsAt: { gte: start, lt: end },
+        status: 'CHECKED_IN',
+      },
+      include: { citizen: { select: { fullName: true } } },
+      orderBy: { queueNumber: 'asc' },
+    });
+
+    if (waiting.length === 0) throw httpError(404, 'Nobody is waiting in the queue');
+
+    const [current, nextUp] = waiting;
+    const finished = await tx.appointment.update({
+      where: { id: current.id },
+      data: { status: 'COMPLETED' },
+    });
+
+    return { current, nextUp, finished };
+  });
+
+  await audit(ctx, {
+    action: 'QUEUE_CALL_NEXT',
+    resourceType: 'Appointment',
+    resourceId: result.current.id,
+  });
+
+  await notify(result.current.citizenId, {
+    type: 'QUEUE_CALLED',
+    messageKey: 'queue.called',
+    vars: {
+      queueNumber: result.current.queueNumber,
+      department: result.current.departmentId,
+    },
+  });
+
+  if (result.nextUp) {
+    await notify(result.nextUp.citizenId, {
+      type: 'QUEUE_NEXT',
+      messageKey: 'queue.next',
+      vars: { department: result.nextUp.departmentId },
+    });
+  }
+
+  return {
+    called: {
+      id: result.current.id,
+      queueNumber: result.current.queueNumber,
+      citizen: result.current.citizen.fullName,
+    },
+    next: result.nextUp
+      ? {
+          id: result.nextUp.id,
+          queueNumber: result.nextUp.queueNumber,
+          citizen: result.nextUp.citizen.fullName,
+        }
+      : null,
   };
 }
