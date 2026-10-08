@@ -1,4 +1,3 @@
-
 // AUTH MODULE: Login (ID number + OTP, with alternative methods for accessibility).
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
