@@ -38,7 +38,7 @@ export function Users() {
 export function Audit() {
   const { audit } = useApp();
   return (
-    <Page title="Audit log" sub="Who accessed or changed what, and when. Entries cannot be edited.">
+    <Page title="Audit log" sub="who accessed or changed what, and when. Entries cannot be edited.">
       <Card>{audit.length ? (
         <table className="table"><thead><tr><th>Time</th><th>User</th><th>Action</th><th>Detail</th></tr></thead>
           <tbody>{audit.map((e, i) => <tr key={i}><td>{e.t}</td><td>{e.who}</td><td>{e.action}</td><td>{e.detail}</td></tr>)}</tbody></table>
