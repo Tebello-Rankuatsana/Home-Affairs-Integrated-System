@@ -2,6 +2,7 @@ import passport from 'passport';
 import { Strategy as JwtStrategy, ExtractJwt } from 'passport-jwt';
 import { config } from './config.js';
 import { store, revokedKey } from './cache.js';
+import { isStaff } from './constants.js';
 
 const opts = {
   jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -12,20 +13,21 @@ const opts = {
 passport.use(
   new JwtStrategy(opts, async (req, payload, done) => {
     try {
-      // Check if token JTI has been revoked via /auth/logout
+      if (!payload.sub || !payload.role || !payload.type) {
+        return done(null, false, { message: 'Malformed token payload' });
+      }
       if (payload.jti) {
-        const isRevoked = await store.get(revokedKey(payload.jti));
-        if (isRevoked) {
-          return done(null, false);
-        }
+        const revoked = await store.get(revokedKey(payload.jti));
+        if (revoked) return done(null, false, { message: 'Token has been revoked' });
       }
 
       const user = {
-        id: payload.sub,
+        id: String(payload.sub),
+        type: payload.type,
         role: payload.role,
         departmentCode: payload.departmentCode ?? null,
+        isStaff: isStaff({ role: payload.role }),
       };
-
       return done(null, user);
     } catch (err) {
       return done(err, false);

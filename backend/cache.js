@@ -1,11 +1,11 @@
 import Redis from 'ioredis';
 import { config } from './config.js';
 
-// Same interface whether we use Redis or the in-memory fallback.
 class MemoryStore {
   constructor() {
     this.map = new Map();
   }
+
   async get(key) {
     const entry = this.map.get(key);
     if (!entry) return null;
@@ -15,40 +15,69 @@ class MemoryStore {
     }
     return entry.value;
   }
+
   async set(key, value, ttlSeconds) {
-    this.map.set(key, { value, expires: Date.now() + ttlSeconds * 1000 });
+    const expires = ttlSeconds ? Date.now() + ttlSeconds * 1000 : Infinity;
+    this.map.set(key, { value: String(value), expires });
   }
+
   async del(key) {
     this.map.delete(key);
   }
-  // Atomic counter that expires ttlSeconds after it was first created (single-threaded, so no race)
+
   async incr(key, ttlSeconds) {
     const entry = this.map.get(key);
     if (!entry || entry.expires < Date.now()) {
-      this.map.set(key, { value: '1', expires: Date.now() + ttlSeconds * 1000 });
+      const expires = ttlSeconds ? Date.now() + ttlSeconds * 1000 : Infinity;
+      this.map.set(key, { value: '1', expires });
       return 1;
     }
-    entry.value = String(Number(entry.value) + 1);
-    return Number(entry.value);
+    const newVal = Number(entry.value) + 1;
+    entry.value = String(newVal);
+    return newVal;
   }
 }
 
 class RedisStore {
   constructor(url) {
-    this.redis = new Redis(url);
+    const options = {
+      maxRetriesPerRequest: null,
+      enableReadyCheck: false,
+      lazyConnect: false,
+    };
+    if (url.startsWith('rediss://')) options.tls = { rejectUnauthorized: false };
+
+    this.redis = new Redis(url, options);
+
+    this.redis.on('error', (err) => {
+      console.error('[Redis Cache] Error:', err.message);
+    });
+    this.redis.on('connect', () => {
+      console.log('[Redis Cache] Connected.');
+    });
   }
-  get(key) {
+
+  async get(key) {
     return this.redis.get(key);
   }
+
   async set(key, value, ttlSeconds) {
-    await this.redis.set(key, value, 'EX', ttlSeconds);
+    if (ttlSeconds) {
+      await this.redis.set(key, String(value), 'EX', ttlSeconds);
+    } else {
+      await this.redis.set(key, String(value));
+    }
   }
+
   async del(key) {
     await this.redis.del(key);
   }
+
   async incr(key, ttlSeconds) {
     const n = await this.redis.incr(key);
-    if (n === 1) await this.redis.expire(key, ttlSeconds);
+    if (n === 1 && ttlSeconds) {
+      await this.redis.expire(key, ttlSeconds);
+    }
     return n;
   }
 }
