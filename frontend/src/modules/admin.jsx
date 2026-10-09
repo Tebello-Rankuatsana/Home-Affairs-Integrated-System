@@ -49,7 +49,7 @@ export function Audit() {
 
 export function AccessRules() {
   return (
-    <Page title="Department access rules" sub="Data minimisation: the identity fields each department may request from Home Affairs.">
+    <Page title="Department access rules" sub="Data minimization: the identity fields each department may request from Home Affairs.">
       <Card>
         <table className="table"><thead><tr><th>Department</th>{Object.values(FIELDS).map((f) => <th key={f}>{f}</th>)}</tr></thead>
           <tbody>{Object.entries(DEPTS).map(([k, v]) => <tr key={k}><td><b>{v}</b></td>{Object.keys(FIELDS).map((f) => <td key={f}>{ACCESS[k].includes(f) ? '✓ Allowed' : '✕ Blocked'}</td>)}</tr>)}</tbody></table>
