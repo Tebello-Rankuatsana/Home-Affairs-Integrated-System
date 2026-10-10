@@ -3,7 +3,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import pg from 'pg';
 import { createApp } from './app.js';
 import { config } from './config.js';
-import { startWorker } from './queue.js'; 
+import { startWorker } from './services/queue.js';
 
 BigInt.prototype.toJSON = function () {
   return this.toString();

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import * as admin from '../services/adminService.js';
 import { DOCUMENT_TYPES, IDENTITY_FIELDS } from '../constants.js';
-import { ctx } from './util.js';
+import { ctx, dbId } from './util.js';
 
 const staffRole = z.enum(['HOME_AFFAIRS_OFFICER', 'DEPARTMENT_STAFF', 'ADMIN']);
 const password = z.string().min(10).max(100);
@@ -43,7 +43,7 @@ export async function updateUser(req, res) {
     .strict()
     .refine((o) => Object.keys(o).length > 0, 'No changes provided')
     .parse(req.body);
-  res.json(await admin.updateUser(ctx(req), z.string().uuid().parse(req.params.id), changes));
+  res.json(await admin.updateUser(ctx(req), dbId.parse(req.params.id), changes));
 }
 
 export async function getScopes(req, res) {

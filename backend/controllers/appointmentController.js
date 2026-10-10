@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import * as appointments from '../services/appointmentService.js';
 import { APPOINTMENT_STATUSES } from '../constants.js';
-import { ctx } from './util.js';
+import { ctx, dbId } from './util.js';
 
-const uuid = z.string().uuid();
+const uuid = dbId;
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD');
 
 export async function slots(req, res) {

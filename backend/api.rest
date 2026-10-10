@@ -452,22 +452,20 @@ Authorization: Bearer {{adminToken}}
 
 
 ###
-###  Openapi Routes(not yet implemented)
+###  All routes below are mounted and live (numeric :id — PKs are BigInt, not UUIDs)
 ###
 
-# POST {{host}}/applications/{{applicationId}}/assign
-# POST {{host}}/applications/{{applicationId}}/withdraw
-# POST {{host}}/applications/{{applicationId}}/pay
-# POST {{host}}/applications/{{applicationId}}/documents/{{documentId}}/review
-# GET  {{host}}/payments
-# PATCH {{host}}/me
-# POST {{host}}/citizens
-# PATCH {{host}}/notifications/read-all
-# POST {{host}}/queue/call-next
-# POST {{host}}/admin/departments
-# POST {{host}}/admin/services
-# PATCH {{host}}/admin/services/{{code}}
+POST {{host}}/applications/{{applicationId}}/assign
+Authorization: Bearer {{staffToken}}
+Content-Type: {{json}}
 
-### Also registered in routes/auth.js (orphaned router — not mounted):
-# POST {{host}}/auth/register
-# POST {{host}}/auth/login
+{
+  "assign": true
+}
+
+### Withdraw an application (citizen, non-terminal only)
+POST {{host}}/applications/{{applicationId}}/withdraw
+Authorization: Bearer {{citizenToken}}
+Content-Type: {{json}}
+
+{}

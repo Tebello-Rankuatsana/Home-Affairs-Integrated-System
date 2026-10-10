@@ -4,8 +4,8 @@
 // Conventions:
 //   - Every error is `{ error, hint?, issues? }`.
 //   - `roles` on an operation is documentation only; the router enforces it.
-//   - Endpoints under `x-planned: true` are described here for stakeholders but are
-//     NOT yet mounted on the router (see routes/index.js).
+//   - All `:id` values are BigInt primary keys serialised as numeric strings
+//     (e.g. "1", "42") — never UUIDs.
 
 import {
   APPLICATION_STATUSES,
@@ -22,7 +22,9 @@ const bearer = [{ bearerAuth: [] }];
 
 // ── tiny schema helpers ────────────────────────────────────────────────
 const str  = (extra = {}) => ({ type: 'string', ...extra });
-const uuid = str({ format: 'uuid' });
+// Numeric BigInt PK serialised as a string (e.g. "42"). Named `uuid` for now to
+// avoid churning every schema; the format is numeric, not UUID.
+const uuid = str({ example: '42' });
 const int  = (extra = {}) => ({ type: 'integer', ...extra });
 const num  = (extra = {}) => ({ type: 'number', ...extra });
 const bool = (extra = {}) => ({ type: 'boolean', ...extra });
@@ -286,7 +288,7 @@ export const openapi = {
       '',
       'Every error response is JSON: `{ error, hint?, issues? }`, where `hint` says what to do next.',
       '',
-      'Operations marked **Planned** appear in this document but are not yet mounted on the router.',
+      'Operations marked **Planned** (`/auth/register`, `/auth/login`) are not implemented; citizens use OTP instead.',
     ].join('\n'),
     contact: { name: 'Platform team' },
     license: { name: 'ISC' },
@@ -377,7 +379,7 @@ export const openapi = {
         }, ['nationalIdNumber', 'firstName', 'lastName', 'password'])),
         okSchema: ref('Token'),
         errors: [400],
-        description: 'Registered in `routes/auth.js` but that router is not mounted. Needs to be ported to `services/authService.js` before it is usable.',
+        description: 'Not implemented. Citizens sign in with OTP (/auth/otp/*); the old password-login draft was removed.',
       }),
     },
     '/auth/login': {
@@ -386,7 +388,7 @@ export const openapi = {
         body: jsonBody(obj({ nationalIdNumber: str(), password: str() }, ['nationalIdNumber', 'password'])),
         okSchema: ref('Token'),
         errors: [400, 401],
-        description: 'Same caveat as `/auth/register`.',
+        description: 'Not implemented. Citizens sign in with OTP (/auth/otp/*).',
       }),
     },
 
@@ -525,7 +527,7 @@ export const openapi = {
     },
     '/applications/{id}/withdraw': {
       post: op('Applications', 'Withdraw an undecided application', {
-        roles: CIT, planned: true,
+        roles: CIT,
         params: [pathParam('id', 'Application id', uuid)],
         body: body(obj({ note: str({ maxLength: 500 }) })),
         okSchema: obj({ id: uuid, status: enumStr(['WITHDRAWN']) }),
@@ -534,7 +536,7 @@ export const openapi = {
     },
     '/applications/{id}/assign': {
       post: op('Applications', 'Claim or release an application', {
-        roles: DEPT, planned: true,
+        roles: DEPT,
         params: [pathParam('id', 'Application id', uuid)],
         body: body(obj({ assign: bool({ default: true }) })),
         okSchema: obj({ id: uuid, assignedTo: { ...uuid, nullable: true } }),
@@ -543,7 +545,7 @@ export const openapi = {
     },
     '/applications/{id}/pay': {
       post: op('Payments', 'Pay the service fee', {
-        roles: CIT, planned: true,
+        roles: CIT,
         params: [pathParam('id', 'Application id', uuid)],
         body: body(obj({ method: enumStr(PAYMENT_METHODS) }, ['method'])),
         okSchema: ref('Receipt'),
@@ -562,7 +564,7 @@ export const openapi = {
     },
     '/applications/{id}/documents/{documentId}/review': {
       post: op('Documents', 'Verify or reject an attached document', {
-        roles: DEPT, planned: true,
+        roles: DEPT,
         params: [pathParam('id', 'Application id', uuid), pathParam('documentId', 'Document id', uuid)],
         body: body(obj({
           decision: enumStr(DOCUMENT_REVIEW_DECISIONS),
@@ -576,7 +578,7 @@ export const openapi = {
     // ── Payments ─────────────────────────────────────────────────────
     '/payments': {
       get: op('Payments', 'My payments', {
-        roles: CIT, planned: true,
+        roles: CIT,
         okSchema: arr(ref('Receipt')),
         errors: [401, 403],
       }),
@@ -621,6 +623,7 @@ export const openapi = {
     // ── Appointments & queue ─────────────────────────────────────────
     '/appointments/slots': {
       get: op('Appointments & queue', 'Available slots for a department and date', {
+        roles: ['CITIZEN', 'DEPARTMENT_STAFF', 'HOME_AFFAIRS_OFFICER'],
         query: [
           queryParam('departmentCode', str({ example: 'TRAFFIC' })),
           queryParam('date', str({ example: '2026-10-12' }), 'YYYY-MM-DD, weekdays only'),
@@ -708,7 +711,7 @@ export const openapi = {
     },
     '/queue/call-next': {
       post: op('Appointments & queue', 'Call the next person in line', {
-        roles: STAFF, planned: true,
+        roles: STAFF,
         body: body(obj({ date: date })),
         okSchema: obj({ called: ref('QueueEntry'), next: ref('QueueEntry').nullable }),
         errors: [400, 401, 403, 404],
@@ -726,7 +729,7 @@ export const openapi = {
     },
     '/notifications/read-all': {
       patch: op('Notifications', 'Mark every notification as read', {
-        roles: CIT, planned: true,
+        roles: CIT,
         okSchema: obj({ updated: int() }),
         errors: [401, 403],
       }),
@@ -807,8 +810,8 @@ export const openapi = {
     },
     '/admin/departments': {
       post: op('Admin', 'Create a department', {
-        roles: ADM, planned: true,
-        body: body(obj({ code: str({ example: 'LABOUR' }), name: str(), ministry: str() }, ['code', 'name'])),
+        roles: ADM,
+        body: body(obj({ code: str({ example: 'LABOUR' }), name: str(), ministryCode: str() }, ['code', 'name', 'ministryCode'])),
         okSchema: ref('Department'),
         statusCode: 201, okDesc: 'Created',
         errors: [400, 401, 403, 409],
@@ -831,7 +834,7 @@ export const openapi = {
     },
     '/admin/services': {
       post: op('Admin', 'Create a service', {
-        roles: ADM, planned: true,
+        roles: ADM,
         body: body(obj({
           code: str(), name: str(), departmentCode: str(),
           requiredDocuments: arr(enumStr(DOCUMENT_TYPES)),
@@ -846,7 +849,7 @@ export const openapi = {
     },
     '/admin/services/{code}': {
       patch: op('Admin', 'Update a service (name, documents, fee, processing time)', {
-        roles: ADM, planned: true,
+        roles: ADM,
         params: [pathParam('code', 'Service code')],
         body: body(obj({
           name: str(),

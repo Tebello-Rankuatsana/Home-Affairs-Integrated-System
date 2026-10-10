@@ -1,13 +1,13 @@
 import { z } from 'zod';
 import * as receipts from '../services/receiptService.js';
-import { ctx } from './util.js';
+import { ctx, dbId } from './util.js';
 
 export async function list(req, res) {
   res.json(await receipts.listReceipts(ctx(req)));
 }
 
 export async function get(req, res) {
-  res.json(await receipts.getReceipt(ctx(req), z.string().uuid().parse(req.params.id)));
+  res.json(await receipts.getReceipt(ctx(req), dbId.parse(req.params.id)));
 }
 
 // Public

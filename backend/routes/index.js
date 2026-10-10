@@ -36,14 +36,15 @@ router.post('/auth/otp/verify', authLimiter, auth.verifyOtp);
 router.post('/auth/staff/login', authLimiter, auth.staffLogin);
 router.get('/receipts/verify/:receiptNumber', publicLimiter, receipts.verify);
 
+// Public catalogue (matches /docs): anyone can browse services and departments.
+router.get('/services', catalog.services);
+router.get('/departments', catalog.departments);
+
 // Everything below requires a valid bearer token
 
 router.use(authenticate);
 
 router.post('/auth/logout', auth.logout);
-
-router.get('/services', catalog.services);
-router.get('/departments', catalog.departments);
 
 // Citizen profile and identity
 
@@ -83,7 +84,11 @@ router.delete('/documents/:id', CITIZEN, documents.remove);
 
 // Appointments and queue
 
-router.get('/appointments/slots', STAFF, appointments.slots);
+router.get(
+  '/appointments/slots',
+  requireRole('CITIZEN', 'DEPARTMENT_STAFF', 'HOME_AFFAIRS_OFFICER'),
+  appointments.slots
+);
 router.post('/appointments', CITIZEN, appointments.book);
 router.get(
   '/appointments',

@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import * as payments from '../services/paymentService.js';
 import { PAYMENT_METHODS } from '../constants.js';
-import { ctx } from './util.js';
+import { ctx, dbId } from './util.js';
 
-const uuid = z.string().uuid();
+const uuid = dbId;
 
 export async function pay(req, res) {
   const body = z.object({ method: z.enum(PAYMENT_METHODS) }).parse(req.body);

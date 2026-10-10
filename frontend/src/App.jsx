@@ -14,7 +14,6 @@ export default function App() {
   return (
     <Provider>
       <Routes>
-        //something 
         <Route path="/login" element={<Login />} />
         <Route path="/app" element={<Guard />}>
           <Route index element={<Home />} />

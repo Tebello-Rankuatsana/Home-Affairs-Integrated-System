@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import * as documents from '../services/documentService.js';
 import { DOCUMENT_TYPES, DOCUMENT_REVIEW_DECISIONS } from '../constants.js';
-import { ctx } from './util.js';
+import { ctx, dbId } from './util.js';
 
-const uuid = z.string().uuid();
+const uuid = dbId;
 
 export async function upload(req, res) {
   const body = z

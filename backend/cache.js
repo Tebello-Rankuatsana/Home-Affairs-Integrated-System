@@ -93,9 +93,17 @@ export function setJSON(key, value, ttlSeconds) {
   return store.set(key, JSON.stringify(value), ttlSeconds);
 }
 
-export const identityCacheKey = (nationalId) => `identity:${nationalId}`;
+export const identityCacheKey = (nationalId) => `identity:v${scopeVersion}:${nationalId}`;
 export const otpKey = (nationalId) => `otp:${nationalId}`;
 export const otpAttemptsKey = (nationalId) => `otp:attempts:${nationalId}`;
 export const otpCooldownKey = (nationalId) => `otp:cooldown:${nationalId}`;
 export const slotsKey = (departmentCode, date) => `slots:${departmentCode}:${date}`;
 export const revokedKey = (jti) => `revoked:${jti}`;
+
+// Bumped whenever DepartmentFieldScope changes so stale identity copies
+// (cached under older field sets) are never served. No table change needed.
+let scopeVersion = 0;
+export function bumpScopeVersion() {
+  scopeVersion += 1;
+  return scopeVersion;
+}

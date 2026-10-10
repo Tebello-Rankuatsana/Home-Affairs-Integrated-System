@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import { prisma } from '../db.js';
+import {prisma} from '../db.js';
 import { config } from '../config.js';
 
 if (config.isProd && !process.env.SEED_PASSWORD) {
