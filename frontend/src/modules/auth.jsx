@@ -1,7 +1,7 @@
 // AUTH MODULE: Login (ID number + OTP, with alternative methods for accessibility).
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useApp, Field } from '../core.jsx';
+import { useApp, Field, Icon } from '../core.jsx';
 
 const DEMO = [['Citizen', 'LS-9004127788'], ['Traffic staff', 'TT-STAFF-01'], ['Passport staff', 'PP-STAFF-01'], ['Administrator', 'ADM-01']];
 const METHODS = { sms: 'SMS code to my phone', email: 'Code to my email', voice: 'Voice call with the code (no reading needed)', bio: 'Fingerprint on my device' };
@@ -30,9 +30,14 @@ export function Login() {
   return (
     <div className="auth">
       <aside>
+        <div className="crest"><Icon name="shield-check" size={30} /></div>
         <h1>GovServe Lesotho</h1>
         <p>One verified identity from Home Affairs. Apply once, track every step, and stop repeating the same documents.</p>
-        <ul><li>✓ Departments see only what they need</li><li>✓ Every access to your data is recorded</li><li>✓ Works on mobile and low bandwidth</li></ul>
+        <ul>
+          <li><Icon name="check-circle" size={20} />Departments see only what they need</li>
+          <li><Icon name="check-circle" size={20} />Every access to your data is recorded</li>
+          <li><Icon name="check-circle" size={20} />Works on mobile and low bandwidth</li>
+        </ul>
       </aside>
       <main id="main">
         <form className="card-b card" onSubmit={step === 1 ? next : verify} noValidate>

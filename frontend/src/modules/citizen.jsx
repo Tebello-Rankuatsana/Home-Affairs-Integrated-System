@@ -1,7 +1,7 @@
 // CITIZEN MODULE: dashboard, service catalogue, apply wizard, tracking, appointments, notifications.
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useApp, Card, Badge, Field, Steps, Page, SERVICES, DEPTS, FIELDS, ACCESS, STATUS, svcOf } from '../core.jsx';
+import { useApp, Card, Badge, Field, Steps, Page, Icon, SERVICES, DEPTS, FIELDS, ACCESS, STATUS, svcOf } from '../core.jsx';
 
 const mine = (apps, u) => apps.filter((a) => a.citizen.nid === u.nid);
 const PROGRESS = { submitted: 25, review: 60, info: 50, approved: 100, rejected: 100 };
@@ -12,7 +12,7 @@ export function CitizenHome() {
   const next = appts.find((a) => a.nid === user.nid);
   return (
     <Page title={`${t('hello')}, ${user.name.split(' ')[0]}`} sub="Here is where your applications and appointments stand today.">
-      <p className="callout ok">✓ Your identity is verified by Home Affairs. Departments request only the details they need and every request is recorded.</p>
+      <p className="callout ok"><Icon name="shield-check" size={20} />Your identity is verified by Home Affairs. Departments request only the details they need and every request is recorded.</p>
       <div className="grid3">
         <div className="stat"><b>{my.filter((a) => !['approved', 'rejected'].includes(a.status)).length}</b>Active applications</div>
         <div className="stat"><b>{my.filter((a) => a.status === 'info').length}</b>Need your action</div>
@@ -80,13 +80,13 @@ export function Apply() {
         {at === 1 && (<>
           <h3>Supporting documents</h3>
           {svc.docs.map((d) => (
-            <div className="row" key={d}><div><b>{d}</b><small>{user.onFile.includes(d) ? '✓ Already on file. We will reuse it.' : up[d] ? '✓ Uploaded' : 'Required: PDF, JPG or PNG, up to 5 MB'}</small></div>
-              {!user.onFile.includes(d) && <button className="btn" onClick={() => setUp({ ...up, [d]: true })}>{up[d] ? 'Replace' : 'Upload'}</button>}</div>
+            <div className="row" key={d}><div><b>{d}</b>{user.onFile.includes(d) ? <small className="ok-text"><Icon name="check" size={14} />Already on file. We will reuse it.</small> : up[d] ? <small className="ok-text"><Icon name="check" size={14} />Uploaded</small> : <small>Required: PDF, JPG or PNG, up to 5 MB</small>}</div>
+              {!user.onFile.includes(d) && <button className="btn" onClick={() => setUp({ ...up, [d]: true })}><Icon name="upload" size={16} />{up[d] ? 'Replace' : 'Upload'}</button>}</div>
           ))}
-          {!docsOk && <p className="callout warn">Please upload every required document to continue.</p>}
+          {!docsOk && <p className="callout warn"><Icon name="alert" size={20} />Please upload every required document to continue.</p>}
         </>)}
         {at === 2 && (<><h3>Review your application</h3><dl className="kv"><div><dt>Service</dt><dd>{svc.name}</dd></div><div><dt>Department</dt><dd>{DEPTS[svc.dept]}</dd></div><div><dt>Documents</dt><dd>{svc.docs.length} attached</dd></div><div><dt>Fee</dt><dd>{svc.fee ? 'M' + svc.fee + ' (pay at submission)' : 'Free'}</dd></div></dl></>)}
-        {at === 3 && (<><h3>✓ Application submitted</h3><p>Your reference number is <b>{ref}</b>. A digital receipt has been added to your notifications.</p><div className="actions"><Link className="btn primary" to={`/app/applications/${ref}`}>Track this application</Link><Link className="btn" to="/app/appointments">Book an appointment</Link></div></>)}
+        {at === 3 && (<><h3 className="success-title"><Icon name="check-circle" size={26} />Application submitted</h3><p>Your reference number is <b>{ref}</b>. A digital receipt has been added to your notifications.</p><div className="actions"><Link className="btn primary" to={`/app/applications/${ref}`}>Track this application</Link><Link className="btn" to="/app/appointments">Book an appointment</Link></div></>)}
         {at < 3 && (
           <div className="actions">
             {at > 0 ? <button className="btn" onClick={() => setAt(at - 1)}>Back</button> : <button className="btn" onClick={() => nav('/app/services')}>Cancel</button>}
@@ -120,9 +120,9 @@ export function ApplicationDetail() {
     <Page title={s.name} sub={`${a.id} · ${DEPTS[s.dept]}`}>
       <p><Badge s={a.status} /></p>
       {a.missing.length > 0 && (
-        <div className="callout warn"><div><b>What you need to do next</b><ul>{a.missing.map((m) => <li key={m}>{m}</li>)}</ul></div><button className="btn primary" onClick={() => respond(a.id)}>Upload and resubmit</button></div>
+        <div className="callout warn"><Icon name="alert" size={22} /><div><b>What you need to do next</b><ul>{a.missing.map((m) => <li key={m}>{m}</li>)}</ul></div><button className="btn primary" onClick={() => respond(a.id)}><Icon name="upload" size={16} />Upload and resubmit</button></div>
       )}
-      {a.status === 'approved' && <p className="callout ok">✓ Approved. Your digital receipt and proof of service are in your notifications.</p>}
+      {a.status === 'approved' && <p className="callout ok"><Icon name="check-circle" size={20} />Approved. Your digital receipt and proof of service are in your notifications.</p>}
       <Card title="Progress history">
         <ol className="timeline">{[...a.history].reverse().map((h, i) => <li key={i}><b>{STATUS[h.s][0]}</b><small>{h.t} · {h.by}{h.note ? ' · ' + h.note : ''}</small></li>)}</ol>
       </Card>
@@ -145,11 +145,11 @@ export function Appointments() {
             <Field label="Service centre"><select className="input" value={f.branch} onChange={set('branch')}>{['Maseru', 'Mafeteng', 'Leribe', 'Mohale’s Hoek', 'Qacha’s Nek'].map((b) => <option key={b}>{b}</option>)}</select></Field>
             <Field label="Date" error={err}><input className="input" type="date" min="2026-10-04" value={f.date} onChange={set('date')} /></Field>
             <Field label="Time" hint="Estimated waiting time on arrival: about 10 minutes."><select className="input" value={f.slot} onChange={set('slot')}>{['08:30', '09:00', '09:30', '10:30', '11:30', '14:00'].map((s) => <option key={s}>{s}</option>)}</select></Field>
-            <button className="btn primary" type="submit">Confirm appointment</button>
+            <button className="btn primary" type="submit"><Icon name="calendar" size={16} />Confirm appointment</button>
           </form>
         </Card>
         <Card title="Your appointments">
-          {appts.filter((a) => a.nid === user.nid).map((a) => <div className="row" key={a.id}><div><b>{svcOf(a.svc).name}</b><small>{a.branch} · {a.date} at {a.slot}</small></div><span className="badge green">✓ Confirmed</span></div>)}
+          {appts.filter((a) => a.nid === user.nid).map((a) => <div className="row" key={a.id}><div><b>{svcOf(a.svc).name}</b><small>{a.branch} · {a.date} at {a.slot}</small></div><span className="badge green"><Icon name="check" size={13} /> Confirmed</span></div>)}
         </Card>
       </div>
     </Page>
@@ -160,8 +160,8 @@ export function Notifications() {
   const { notes, setNotes } = useApp();
   return (
     <Page title="Notifications" sub="Also sent by SMS and email.">
-      <button className="btn" onClick={() => setNotes(notes.map((n) => ({ ...n, read: true })))}>Mark all as read</button>
-      <Card>{notes.map((n) => <div className="row" key={n.id}><div><b>{n.read ? '' : '● New · '}{n.msg}</b><small>{n.t}</small></div></div>)}</Card>
+      <button className="btn" onClick={() => setNotes(notes.map((n) => ({ ...n, read: true })))}><Icon name="check" size={16} />Mark all as read</button>
+      <Card>{notes.map((n) => <div className="row" key={n.id}><div><b>{n.read ? '' : <><Icon name="dot" size={10} className="new-dot" /> New · </>}{n.msg}</b><small>{n.t}</small></div></div>)}</Card>
     </Page>
   );
 }

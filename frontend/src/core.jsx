@@ -2,6 +2,38 @@
 import { createContext, useCallback, useContext, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 
+/* ---------- Icons (inline SVG, no extra dependency; stroke follows currentColor) ---------- */
+const ICONS = {
+  check: <polyline points="20 6 9 17 4 12" />,
+  x: <><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></>,
+  'check-circle': <><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></>,
+  'x-circle': <><circle cx="12" cy="12" r="10" /><path d="m15 9-6 6" /><path d="m9 9 6 6" /></>,
+  alert: <><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></>,
+  clock: <><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></>,
+  send: <><path d="m22 2-7 20-4-9-9-4Z" /><path d="M22 2 11 13" /></>,
+  dot: <circle cx="12" cy="12" r="5" fill="currentColor" />,
+  lock: <><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></>,
+  shield: <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />,
+  'shield-check': <><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" /><path d="m9 12 2 2 4-4" /></>,
+  'a-down': <><path d="m14 12 4 4 4-4" /><path d="M18 16V7" /><path d="m2 16 4.039-9.69a.5.5 0 0 1 .923 0L11 16" /><path d="M3.304 13h6.392" /></>,
+  'a-up': <><path d="m14 11 4-4 4 4" /><path d="M18 16V7" /><path d="m2 16 4.039-9.69a.5.5 0 0 1 .923 0L11 16" /><path d="M3.304 13h6.392" /></>,
+  globe: <><circle cx="12" cy="12" r="10" /><path d="M2 12h20" /><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></>,
+  bell: <><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></>,
+  'log-out': <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></>,
+  layout: <><rect x="3" y="3" width="7" height="9" rx="1" /><rect x="14" y="3" width="7" height="5" rx="1" /><rect x="14" y="12" width="7" height="9" rx="1" /><rect x="3" y="16" width="7" height="5" rx="1" /></>,
+  grid: <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /></>,
+  file: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></>,
+  calendar: <><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></>,
+  inbox: <><polyline points="22 12 16 12 14 15 10 15 8 12 2 12" /><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></>,
+  users: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></>,
+  list: <><line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" /><line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" /></>,
+  key: <><circle cx="7.5" cy="15.5" r="5.5" /><path d="m21 2-9.6 9.6" /><path d="m15.5 7.5 3 3L22 7l-3-3" /></>,
+  upload: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></>,
+};
+export const Icon = ({ name, size = 16, className = '' }) => (
+  <svg className={'icon ' + className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">{ICONS[name]}</svg>
+);
+
 /* ---------- Domain data (from the HCI report: Home Affairs + 5 departments) ---------- */
 export const DEPTS = { HA: 'Home Affairs', TT: 'Traffic & Transport', FN: 'Finance', PN: 'Pension Services', PL: 'Police', PP: 'Passport Services' };
 export const FIELDS = { name: 'Full name', nid: 'National ID no.', dob: 'Date of birth', citizenship: 'Citizenship', address: 'Address', phone: 'Phone' };
@@ -19,8 +51,8 @@ export const SERVICES = [
   { id: 'pc', dept: 'PL', name: 'Police clearance certificate', fee: 80, days: 8, docs: ['Fingerprint slip'] },
   { id: 'pp', dept: 'PP', name: 'Passport renewal', fee: 400, days: 15, docs: ['Birth certificate', 'Photograph'] },
 ];
-// Status always has text + symbol + colour (never colour alone).
-export const STATUS = { submitted: ['Submitted', 'blue', '●'], review: ['Under review', 'amber', '◐'], info: ['More information needed', 'purple', '!'], approved: ['Approved', 'green', '✓'], rejected: ['Rejected', 'red', '✕'] };
+// Status always has text + icon + colour (never colour alone). Third item is an icon name.
+export const STATUS = { submitted: ['Submitted', 'slate', 'send'], review: ['Under review', 'amber', 'clock'], info: ['More information needed', 'purple', 'alert'], approved: ['Approved', 'green', 'check-circle'], rejected: ['Rejected', 'red', 'x-circle'] };
 const P1 = { name: 'Thabo Mokoena', nid: 'LS-9004127788', dob: '1990-04-12', citizenship: 'Mosotho', address: 'Ha Abia, Maseru', phone: '+266 5890 1122' };
 const P2 = { name: 'Mamello Letsie', nid: 'LS-8511034455', dob: '1985-11-03', citizenship: 'Mosotho', address: 'Mafeteng', phone: '+266 6212 3344' };
 const USERS = [
@@ -44,9 +76,9 @@ const T = {
   st: { hello: 'Lumela', home: 'Letlapa la ka', services: 'Litšebeletso', apps: 'Likopo tsa ka', appts: 'Likopano', notes: 'Litsebiso', signout: 'Tsoa', queue: 'Likopo tse emetseng', overview: 'Kakaretso', users: 'Basebelisi le likarolo', audit: 'Rekoto ea liketso', access: 'Melao ea phihlello' },
 };
 const NAV = {
-  citizen: [['/app', 'home'], ['/app/services', 'services'], ['/app/applications', 'apps'], ['/app/appointments', 'appts'], ['/app/notifications', 'notes']],
-  staff: [['/app', 'queue']],
-  admin: [['/app', 'overview'], ['/app/users', 'users'], ['/app/audit', 'audit'], ['/app/access', 'access']],
+  citizen: [['/app', 'home', 'layout'], ['/app/services', 'services', 'grid'], ['/app/applications', 'apps', 'file'], ['/app/appointments', 'appts', 'calendar'], ['/app/notifications', 'notes', 'bell']],
+  staff: [['/app', 'queue', 'inbox']],
+  admin: [['/app', 'overview', 'layout'], ['/app/users', 'users', 'users'], ['/app/audit', 'audit', 'list'], ['/app/access', 'access', 'key']],
 };
 export const svcOf = (id) => SERVICES.find((s) => s.id === id);
 const now = () => new Date().toISOString().slice(0, 16).replace('T', ' ');
@@ -102,10 +134,10 @@ export function Provider({ children }) {
 }
 
 /* ---------- Shared UI kit ---------- */
-export const Badge = ({ s }) => { const [l, c, i] = STATUS[s]; return <span className={'badge ' + c}><span aria-hidden="true">{i}</span> {l}</span>; };
+export const Badge = ({ s }) => { const [l, c, i] = STATUS[s]; return <span className={'badge ' + c}><Icon name={i} size={13} /> {l}</span>; };
 export const Card = ({ title, action, children }) => (<section className="card">{title && <div className="card-h"><h2>{title}</h2>{action}</div>}<div className="card-b">{children}</div></section>);
 export const Field = ({ label, hint, error, children }) => (<div className="field"><label>{label}{children}</label>{hint && <small>{hint}</small>}{error && <p className="err" role="alert">{error}</p>}</div>);
-export const Steps = ({ items, at }) => (<ol className="steps" aria-label="Progress">{items.map((x, i) => (<li key={x} className={i < at ? 'done' : i === at ? 'now' : ''} aria-current={i === at ? 'step' : undefined}><span>{i < at ? '✓' : i + 1}</span>{x}</li>))}</ol>);
+export const Steps = ({ items, at }) => (<ol className="steps" aria-label="Progress">{items.map((x, i) => (<li key={x} className={i < at ? 'done' : i === at ? 'now' : ''} aria-current={i === at ? 'step' : undefined}><span>{i < at ? <Icon name="check" size={16} /> : i + 1}</span>{x}</li>))}</ol>);
 export const Page = ({ title, sub, children }) => (<><h1>{title}</h1>{sub && <p className="muted">{sub}</p>}{children}</>);
 
 /* ---------- App shell (header + role-based sidebar) ---------- */
@@ -124,16 +156,16 @@ export function Shell() {
           <div className="brand-copy"><b>GovServe Lesotho</b><small>Integrated Government Services</small></div>
         </div>
         <div className="hdr-r">
-          <div className="nav-section accessibility" aria-label="Text size controls">
-            <button className="btn ghost light access-btn" type="button" onClick={() => adjustTextScale(-1)} aria-label="Decrease text size">A-</button>
-            <button className="btn ghost light access-btn" type="button" onClick={() => adjustTextScale(1)} aria-label="Increase text size">A+</button>
+          <div className="nav-section accessibility" role="group" aria-label="Text size controls">
+            <button className="btn ghost light access-btn" type="button" onClick={() => adjustTextScale(-1)} aria-label="Decrease text size" title="Decrease text size"><Icon name="a-down" size={20} /></button>
+            <button className="btn ghost light access-btn" type="button" onClick={() => adjustTextScale(1)} aria-label="Increase text size" title="Increase text size"><Icon name="a-up" size={20} /></button>
           </div>
           <div className="nav-section language">
-            <button className="btn ghost light" type="button" onClick={() => setLang(lang === 'en' ? 'st' : 'en')} aria-label="Change language">{lang === 'en' ? 'Sesotho' : 'English'}</button>
+            <button className="btn ghost light" type="button" onClick={() => setLang(lang === 'en' ? 'st' : 'en')} aria-label="Change language"><Icon name="globe" size={17} />{lang === 'en' ? 'Sesotho' : 'English'}</button>
           </div>
           {user.role === 'citizen' && (
             <div className="nav-section notice">
-              <span className="notice-indicator"><span className="notice-dot" aria-hidden="true"></span>{unread} new</span>
+              <span className="notice-indicator"><Icon name="bell" size={15} />{unread} new{unread > 0 && <span className="notice-dot" aria-hidden="true"></span>}</span>
             </div>
           )}
           <div className="nav-section profile">
@@ -146,15 +178,15 @@ export function Shell() {
             </div>
           </div>
           <div className="nav-section signout">
-            <button className="btn ghost light signout-btn" type="button" onClick={logout}>{t('signout')}</button>
+            <button className="btn ghost light signout-btn" type="button" onClick={logout}><Icon name="log-out" size={16} />{t('signout')}</button>
           </div>
         </div>
       </header>
       <div className="body">
-        <nav className="side" aria-label="Main">{NAV[user.role].map(([to, k]) => <NavLink key={to} to={to} end={to === '/app'}>{t(k)}</NavLink>)}</nav>
+        <nav className="side" aria-label="Main">{NAV[user.role].map(([to, k, ic]) => <NavLink key={to} to={to} end={to === '/app'}><Icon name={ic} size={18} />{t(k)}</NavLink>)}</nav>
         <main id="main" tabIndex="-1"><Outlet /></main>
       </div>
-      {toast && <div className="toast" role="status">{toast}</div>}
+      {toast && <div className="toast" role="status"><Icon name="check-circle" size={18} />{toast}</div>}
     </div>
   );
 }
