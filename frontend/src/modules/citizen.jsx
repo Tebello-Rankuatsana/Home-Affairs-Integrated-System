@@ -3,6 +3,7 @@
 // when offline. No backend changes. Design and layout are unchanged.
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useApp, Card, Badge, Field, Steps, Page, Icon, SERVICES, DEPTS, FIELDS, ACCESS, STATUS, svcOf } from '../core.jsx';
 import { useApp, Card, Badge, Field, Steps, Page, SERVICES, DEPTS, FIELDS, ACCESS, STATUS, svcOf } from '../core.jsx';
 import { ApiBadge } from '../lib/ApiStatus.jsx';
 import {
@@ -33,6 +34,7 @@ export function CitizenHome() {
   const unread = live.notes ? live.notes.unreadCount : notes.filter((n) => !n.read).length;
   return (
     <Page title={`${t('hello')}, ${user.name.split(' ')[0]}`} sub="Here is where your applications and appointments stand today.">
+      <p className="callout ok"><Icon name="shield-check" size={20} />Your identity is verified by Home Affairs. Departments request only the details they need and every request is recorded.</p>
       <ApiBadge />
       <p className="callout ok">✓ Your identity is verified by Home Affairs. Departments request only the details they need and every request is recorded.</p>
       <div className="grid3">
@@ -178,7 +180,7 @@ export function Apply() {
                 <label className="btn">{up[d] ? 'Replace' : 'Upload'}<input type="file" accept=".pdf,.jpg,.jpeg,.png" hidden onChange={pickFile(d)} /></label>
               )}</div>
           ))}
-          {!docsOk && <p className="callout warn">Please upload every required document to continue.</p>}
+          {!docsOk && <p className="callout warn"><Icon name="alert" size={20} />Please upload every required document to continue.</p>}
         </>)}
         {at === 2 && (<><h3>Review your application</h3><dl className="kv"><div><dt>Service</dt><dd>{svc.name}</dd></div><div><dt>Department</dt><dd>{DEPTS[svc.dept]}</dd></div><div><dt>Documents</dt><dd>{svc.docs.length} attached{docIds.length ? ` (${docIds.length} uploaded to backend)` : ''}</dd></div><div><dt>Fee</dt><dd>{svc.fee ? 'M' + svc.fee + ' (pay at submission)' : 'Free'}</dd></div></dl></>)}
         {at === 3 && (<><h3>✓ Application submitted</h3><p>Your reference number is <b>{ref}</b>. A digital receipt has been added to your notifications.</p><div className="actions"><Link className="btn primary" to={`/app/applications/${ref}`}>Track this application</Link><Link className="btn" to="/app/appointments">Book an appointment</Link></div></>)}
@@ -270,9 +272,9 @@ export function ApplicationDetail() {
     <Page title={s.name} sub={`${a.id} · ${DEPTS[s.dept]}`}>
       <p><Badge s={a.status} /></p>
       {a.missing.length > 0 && (
-        <div className="callout warn"><div><b>What you need to do next</b><ul>{a.missing.map((m) => <li key={m}>{m}</li>)}</ul></div><button className="btn primary" onClick={() => respond(a.id)}>Upload and resubmit</button></div>
+        <div className="callout warn"><Icon name="alert" size={22} /><div><b>What you need to do next</b><ul>{a.missing.map((m) => <li key={m}>{m}</li>)}</ul></div><button className="btn primary" onClick={() => respond(a.id)}><Icon name="upload" size={16} />Upload and resubmit</button></div>
       )}
-      {a.status === 'approved' && <p className="callout ok">✓ Approved. Your digital receipt and proof of service are in your notifications.</p>}
+      {a.status === 'approved' && <p className="callout ok"><Icon name="check-circle" size={20} />Approved. Your digital receipt and proof of service are in your notifications.</p>}
       <Card title="Progress history">
         <ol className="timeline">{[...a.history].reverse().map((h, i) => <li key={i}><b>{STATUS[h.s][0]}</b><small>{h.t} · {h.by}{h.note ? ' · ' + h.note : ''}</small></li>)}</ol>
       </Card>

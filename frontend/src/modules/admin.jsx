@@ -56,7 +56,7 @@ export function Users() {
             <tr key={u.id}><td>{u.name}</td><td>{u.loginId}</td>
               <td><select className="input" aria-label={`Role for ${u.name}`} value={u.role} onChange={(e) => setUserField(u.id, 'role', e.target.value)}><option>citizen</option><option>staff</option><option>admin</option></select></td>
               <td>{DEPTS[u.dept] || 'N/A'}</td>
-              <td><button className="btn" onClick={() => setUserField(u.id, 'active', !u.active)}>{u.active ? '✓ Active (suspend)' : '✕ Suspended (restore)'}</button></td></tr>))}</tbody></table>
+              <td><button className="btn" onClick={() => setUserField(u.id, 'active', !u.active)}>{u.active ? <><Icon name="check" size={16} />Active (suspend)</> : <><Icon name="x" size={16} />Suspended (restore)</>}</button></td></tr>))}</tbody></table>
       </Card>
     </Page>
   );
@@ -150,7 +150,7 @@ export function AccessRules() {
       </Card>
       <Card title="Prototype matrix">
         <table className="table"><thead><tr><th>Department</th>{Object.values(FIELDS).map((f) => <th key={f}>{f}</th>)}</tr></thead>
-          <tbody>{Object.entries(DEPTS).map(([k, v]) => <tr key={k}><td><b>{v}</b></td>{Object.keys(FIELDS).map((f) => <td key={f}>{ACCESS[k].includes(f) ? '✓ Allowed' : '✕ Blocked'}</td>)}</tr>)}</tbody></table>
+          <tbody>{Object.entries(DEPTS).map(([k, v]) => <tr key={k}><td><b>{v}</b></td>{Object.keys(FIELDS).map((f) => <td key={f}>{ACCESS[k].includes(f) ? <span className="perm yes"><Icon name="check" size={15} />Allowed</span> : <span className="perm no"><Icon name="x" size={15} />Blocked</span>}</td>)}</tr>)}</tbody></table>
       </Card>
     </Page>
   );
