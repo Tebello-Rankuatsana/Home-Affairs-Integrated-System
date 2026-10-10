@@ -1,0 +1,463 @@
+================================================================================
+PROMPT: LINK FRONTEND + BACKEND TOGETHER AND GET THEM IN SYNC
+Home-Affairs-Integrated-System (Frontend: React/Vite + Backend: Express/Prisma/Postgres/Redis)
+COPY-PASTE THIS WHOLE FILE TO AN AI CODING AGENT TO DO THE INTEGRATION WORK
+================================================================================
+IMPORTANT INSTRUCTION TO AGENT:
+- DO NOT redesign the system from scratch.
+- Link the EXISTING frontend in /frontend/src and EXISTING backend in /backend.
+- Keep the documented concept: Home Affairs = authoritative identity source, other
+  ministries (Traffic & Transport, Finance, Pension, Police, Passport) keep their own
+  service-specific records, access via authorized, minimum-necessary requests.
+- Every API must work end-to-end, every DB query must be correct, ACID must hold.
+- Frontend mock data must be REPLACED by real API calls, not kept in parallel.
+- Ask for confirmation before changing DB schema. Prefer additive migrations only.
+
+--------------------------------------------------------------------------------
+1. SYSTEM CONTEXT (FROM DOCUMENTATION - DO NOT CHANGE CONCEPT)
+--------------------------------------------------------------------------------
+- Three-tier client-server: Client (React PWA web app, browser, mobile + low-bandwidth
+  optimized) -> Server (Node.js + Express API, JWT + Passport, RBAC, BullMQ, Swagger) ->
+  Data (PostgreSQL authoritative + Redis cache + MinIO/S3 file storage).
+- Selected architecture = Alternative 1 (Centralized Identity via Home Affairs) +
+  Alternative 4 (Federated Inter-Ministry System) + Alternative 3 features
+  (appointments/queue/notifications) + Alternative 2 as assisted-access channel.
+- General flow that MUST work after sync:
+  1. Citizen requests service + authenticates (ID + OTP / alternative auth).
+  2. Ministry identifies required info.
+  3. Ministry sends authorized identity request to Home Affairs.
+  4. Home Affairs verifies and returns ONLY permitted fields (DepartmentFieldScope).
+  5. Ministry processes application with its own rules/records.
+  6. Citizen gets status updates/notifications/receipts.
+  7. System logs audit entries for every sensitive access.
+- Functional requirements to satisfy: secure citizen profile, citizen auth (OTP + alternatives),
+  digital document submission, authorized data retrieval, departmental data restriction,
+  online application, progress tracking, appointment/queue, staff review/decisions,
+  notifications (SMS/email/in-app), digital receipts, record maintenance + audit logging.
+- Non-functional: ~3s response, TLS encryption, 99% uptime, mobile/low-bandwidth,
+  privacy/data-minimization, RBAC + immutable audit, EN + Sesotho (i18next), WCAG
+  accessibility (clear language, contrast, colour-independent actions, clear errors,
+  responsive, elderly/disabled support).
+
+--------------------------------------------------------------------------------
+2. CURRENT REALITY - FRONTEND (/frontend) - VERIFIED BY SCAN
+--------------------------------------------------------------------------------
+Stack actually installed: react 18.3.1 + react-dom 18.3.1 + react-router-dom 7.18.4 +
+vite 8.3.2 ONLY. No Tailwind, no TanStack Query, no i18next, no axios, no PWA plugin.
+Config: HashRouter in src/index.jsx, vite.config.js has NO proxy/env/PWA.
+Files (9 total): src/index.jsx, src/App.jsx, src/core.jsx (store+mock+UI kit, ~160 lines),
+src/modules/auth.jsx (Login), src/modules/citizen.jsx
+(CitizenHome,Services,Apply,Applications,ApplicationDetail,Appointments,Notifications),
+src/modules/staff.jsx (Queue,Review), src/modules/admin.jsx
+(AdminHome,Users,Audit,AccessRules), src/index.css, src/App.css (dead, never imported).
+
+CRITICAL: ZERO backend integration. No fetch/axios/useQuery/http, no VITE_* env,
+no localStorage/token, no JWT handling. All state is in-memory useState mock in core.jsx.
+Auth is mock: login(id) looks up local USERS array, OTP hardcoded to '123456'.
+Upload is fake boolean toggle, no <input type=file>. Receipts are text only.
+Notifications are in-memory array. Roles are UI-only (tamperable via devtools).
+Routes: /login, /app, /app/services, /app/apply/:id, /app/applications,
+/app/applications/:id, /app/appointments, /app/notifications, /app/review/:id,
+/app/users, /app/audit, /app/access. Nav per role: citizen(5), staff(queue only),
+admin(overview/users/audit/access).
+Mock constants: DEPTS {HA,TT,FN,PN,PL,PP}, FIELDS {name,nid,dob,citizenship,address,phone},
+ACCESS matrix (HA=all 6, TT=[name,nid,dob], FN=[name,nid], PN=[name,nid,dob,citizenship],
+PL=[name,nid,citizenship], PP=[name,nid,dob,citizenship]), SERVICES (7: id,dl,vr,tx,pn,pc,pp),
+USERS (4: LS-9004127788 citizen, TT-STAFF-01, PP-STAFF-01, ADM-01), 5 seed apps
+(GS-1001..GS-1005), 1 appt, 1 note. No pagination, no loading/error states for 401/403/500.
+
+--------------------------------------------------------------------------------
+3. CURRENT REALITY - BACKEND (/backend) - VERIFIED BY SCAN
+--------------------------------------------------------------------------------
+Stack: Express 5.2 ESM, Prisma 7.10 + @prisma/adapter-pg + pg, bcrypt/bcryptjs,
+BullMQ 6.3 + ioredis 6, jsonwebtoken 9 + passport + passport-jwt + passport-local,
+multer 2.4, zod 4.6, helmet, cors, express-rate-limit 8.7, swagger-jsdoc + swagger-ui,
+@aws-sdk/client-s3. No test script. No migrations/ dir (prisma7.config.ts points to
+prisma/migrations but only schema.prisma + seed.js exist).
+Entry: server.js (pg Pool + PrismaPg adapter + BigInt toJSON + startWorker + listen 3000),
+app.js (trust proxy, helmet CSP, cors, X-Request-Id, globalLimiter, json 1mb,
+passport.initialize, GET /health, GET /openapi.json, /docs, routes/, notFound+errorHandler).
+Config keys in config.js: PORT 3000, DATABASE_URL, NODE_ENV, JWT_SECRET/EXPIRES_IN 1h,
+RECEIPT_SECRET, IDENTITY_CACHE_TTL 300s, OTP_TTL 300s/COOLDOWN 60s/MAX_ATTEMPTS 5,
+RATE_LIMIT, UPLOAD (./uploads, 5MB, jpeg/png/pdf), S3_*, APPOINTMENTS
+(offset 120m, open 8 close 16, slot 30m, capacity 2, maxDays 30, slotCache 10s, avg 15m).
+.env currently has PORT, DATABASE_URL (Neon), DB_*, API_KEY, JWT_SECRET, RATE_LIMIT,
+REDIS_URL (Upstash) - SECRET IS COMMITTED, ROTATE IT. No S3 keys set -> LocalStorage active.
+
+Prisma: 22 models, BigInt autoincrement PKs, snake_case @@map:
+Ministry, Department (code TRAFFIC/PASSPORT...), Citizen (nationalIdNumber unique,
+firstName/lastName/dob/gender/citizenship/email/phone/address),
+CitizenProfile (1-1 prefs: preferredLanguage, accountStatus, lastLogin),
+Staff (employeeNumber/email unique), AuthenticationCredential (citizenId?/staffId?,
+PASSWORD/OTP?, hash), Role (CITIZEN/ADMIN/HOME_AFFAIRS_OFFICER/DEPARTMENT_STAFF),
+Permission, RolePermission, StaffRole, DepartmentFieldScope ([departmentId,field]),
+ServiceType (code DRIVING_LICENCE..., fee Decimal, requiredDocuments String[]),
+Application (reference APP-XXXXXXXX unique, status SUBMITTED, formData Json,
+paymentStatus UNPAID), ApplicationDocument, ApplicationStatusHistory,
+Document (citizen_document, storageKey/mime/sha256/status), IdentityRequest
+(verify audit), Payment, Receipt (RCT-YYYYMMDD-XXXXXX unique, verificationCode,
+signature HMAC), Notification (IN_APP/SMS/EMAIL, PENDING/SENT), AuditLog
+(append-only, polymorphic actorId, indexed action/actor/resource/createdAt),
+Appointment (APT-XXXXXXXX, startsAt, BOOKED, queueNumber).
+Seed: 4 ministries, 6 departments + scopes, 4 roles, 6 services
+(DRIVING_LICENCE 150, VEHICLE_REG 200, PASSPORT 400, PENSION free, SUBSIDY free,
+POLICE_CLEARANCE 100 LSL), 7 staff (*@gov.example / ChangeMe-12345), 3 citizens
+(1990010100001 Thabo, 1985050500002 Palesa, 1955112200003 Mpho). No apps/docs/appts/payments.
+
+LIVE ENDPOINTS (routes/index.js, all behind passport JWT except 4 public):
+Public: GET /health, GET /openapi.json, GET /docs, POST /auth/otp/request,
+POST /auth/otp/verify, POST /auth/staff/login, POST /auth/logout (JWT),
+GET /receipts/verify/:receiptNumber.
+Citizen: GET/PATCH /me (only email/preferredLanguage en/st editable),
+POST /applications {serviceCode,formData,documentIds<=10} -> 201 {id,reference,status,missingDocuments},
+GET /applications?status/assigned/reference/limit<=200/offset,
+GET /applications/:id, POST /applications/:id/assign (staff), PATCH /applications/:id/status
+(DEPT_STAFF only, transition map, note required for REJECT/MORE_INFO, APPROVED requires
+docs verified, $transaction + history + audit + notify), POST /applications/:id/respond
+(MORE_INFO->UNDER_REVIEW, $transaction), POST /applications/:id/withdraw,
+POST /applications/:id/pay (stub 200ms gateway, $transaction Payment+app PAID + PAYMENT receipt),
+POST /applications/:id/documents/:documentId (attach), POST .../review (staff),
+POST /documents (multer memory 5MB 1 file, magic-byte PDF/JPEG/PNG, sha256, rollback on DB fail),
+GET /documents, GET /documents/:id/download, DELETE /documents/:id,
+POST /citizens + PATCH /citizens/:nationalId (HA_OFFICER only, del identity cache),
+POST /identity/verify (STAFF: DEPT needs {applicationId} in own dept, HA needs {nationalId},
+returns scope-filtered fields + cache hit/miss, writes IdentityRequest + audit),
+GET /services + GET /departments (CODE requires JWT, docs say public - FIX),
+Appointments: GET /appointments/slots?departmentCode&date (CODE is STAFF-only - BLOCKS citizen booking, FIX),
+POST /appointments {departmentCode,serviceCode?,startsAt} (advisory-lock capacity + 1/day),
+GET /appointments?date&status, POST /appointments/:id/cancel|check-in|complete|no-show,
+GET /appointments/:id/queue-position {queueNumber,peopleAhead,estimatedWait},
+GET /queue?date, POST /queue/call-next,
+GET /notifications?unread + PATCH /notifications/read-all + PATCH /notifications/:id/read,
+GET /receipts + GET /receipts/:id, GET /payments (reads receipt table),
+Admin: GET/POST/PATCH /admin/users (active flag IGNORED - FIX), POST /admin/departments
+(requires ministryCode, docs say ministry - FIX), GET/PUT /admin/departments/:code/scopes
+(HA immutable, NO cache invalidation - FIX), POST/PATCH /admin/services,
+GET /audit-logs (only action/actorId/limit<=500 wired, X-Total-Count never set - FIX).
+Auth: OTP request always-200 anti-enumeration + cooldown + devOtp if !prod, verify with
+timingSafeEqual + attempts cap + JWT {type:CITIZEN,role} + lastLogin; staff login via
+bcrypt + JWT {type:STAFF,role:first StaffRole,departmentCode} + lastUsed; logout revokes jti.
+Orphan routes/auth.js is DEAD (never imported, schema-mismatched, missing type claim) - DELETE or ignore.
+
+--------------------------------------------------------------------------------
+4. GAP ANALYSIS A - DB TABLES WITH NO / INCOMPLETE UI (BUILD THESE SCREENS)
+--------------------------------------------------------------------------------
+[T1] ministry -> No endpoint exposes ministries, no UI. Action: add GET /ministries if needed,
+  or show ministry via department detail. Else document as intentionally hidden.
+[T2] department_field_scope -> Admin GET/PUT exists but frontend /app/access is static
+  ACCESS constant display only. Action: build editable AccessRules screen wired to
+  GET/PUT /admin/departments/:code/scopes + availableFields list. Enforce HA immutable.
+[T3] citizen + citizen_profile -> Only /me self-view + officer create/update. No citizen
+  search/list endpoint. Staff Review screen must NOT do arbitrary lookup (by design);
+  keep it that way but add officer-only citizen edit screen wired to POST/PATCH /citizens.
+  Add profile screen wired to PATCH /me {email,preferredLanguage} + language switch.
+[T4] staff/role/permission/role_permission/staff_role -> Admin /app/users exists locally
+  but must wire to GET/POST/PATCH /admin/users. Roles/permissions tables have no endpoints;
+  role is string-only. Action: keep string roles, document Permission as future work.
+[T5] authentication_credentials -> Correctly has no UI (secret). No action.
+[T6] service (availableOnline flag) -> Never filtered. Action: respect flag in Services list
+  (GET /services) and admin create/update screen.
+[T7] identity_request -> Write-only audit, no GET. Action: add admin/staff view
+  (e.g. GET /identity/requests?departmentCode&date) OR document as audit-log-only.
+  At minimum show verify history in ApplicationDetail via audit-logs.
+[T8] payment -> No direct UI; GET /payments actually returns receipts. Action: build
+  payment step in Apply wizard wired to POST /applications/:id/pay {paymentMethod:
+  MPESA|ECO-CASH|...} + show transactionReference + receipt link. Fix backend to return
+  payment row + receiptNumber separately.
+[T9] receipt -> List/detail/verify exist in backend but frontend receipt is text only.
+  Action: build receipts list + detail + PDF/download + public verify page
+  wired to GET /receipts, GET /receipts/:id, GET /receipts/verify/:receiptNumber.
+[T10] notification (SMS/EMAIL rows invisible, IN_APP only) -> Frontend Notifications must
+  wire to GET /notifications + PATCH read-all/read-one and show unreadCount. Add polling
+  or WebSocket. Backend SMS/email fan-out is stub (console.log) - wire to real gateway or
+  keep logged + documented.
+[T11] audit_log -> GET /audit-logs admin-only exists, frontend /app/audit is mock array.
+  Action: build server-driven audit viewer with filters (action, actor, resource, date),
+  pagination (limit/offset, X-Total-Count), immutable (no edit/delete).
+[T12] appointment -> Backend full-featured but frontend Appointments is local push
+  {id:Date.now()}. Must wire to slots/book/list/cancel/check-in/complete/no-show/
+  queue-position/queue/call-next + branch mapping (frontend branch select Maseru/Mafeteng/
+  Leribe/... has NO backend equivalent - map branch -> departmentCode OR add branch column).
+
+--------------------------------------------------------------------------------
+5. GAP ANALYSIS B - UI FEATURES WITH NO / STUB BACKEND (FIX BACKEND OR WIRE UP)
+--------------------------------------------------------------------------------
+[U1] Login OTP SMS/voice/biometric + Sesotho: backend OTP request/verify works (with devOtp,
+  cooldown, attempts) but SMS/email in messaging.js is console.log stub, no voice/bio.
+  Action: wire frontend Login 2-step to POST /auth/otp/request {nationalId} then
+  POST /auth/otp/verify {nationalId,code} -> store JWT, handle 429 cooldown/attempts.
+  Keep method select (sms|email|voice|bio) as preference hint; document voice/bio as future.
+[U2] Service catalogue search + consent + data-minimization: frontend uses SERVICES constant
+  + client-side ACCESS filter (INSECURE). Action: replace with GET /services (+q/dept filter)
+  and GET /identity/verify server-side filtering. Consent checkbox must send consent:true
+  and be audited.
+[U3] Document upload/reuse onFile: frontend has no file picker. Action: add <input type=file>
+  (5MB, jpeg/png/pdf, magic-byte error messages) wired to POST /documents {type,applicationId?}
+  multipart -> {fileId,url} then include documentIds in POST /applications. Add reuse via
+  GET /documents. Staff view must show ✓ Received from real data.
+[U4] Payment (Pay Mxxx): no backend call. Action: wire to POST /applications/:id/pay.
+  Handle 409 (free/already-paid/closed) and 402 gateway fail. Show receiptNumber.
+[U5] Application submit/tracking/history/resubmit: frontend creates GS-xxxx locally.
+  Action: wire to POST /applications -> {id,reference,status}, GET /applications?mine,
+  GET /applications/:id (history, missing[], receipts[]), POST /applications/:id/respond.
+  Progress % map (25/60/50/100) should derive from real status enum.
+[U6] Appointments availability/wait estimate: frontend slot select is static
+  (08:30...14:00). Action: wire to GET /appointments/slots?departmentCode&date (FIX auth to
+  allow CITIZEN first) + POST /appointments + queue-position {peopleAhead,estimatedWait}.
+[U7] SMS/email notifications subtitle 'Also sent by SMS and email' is false. Action: wire to
+  GET /notifications, implement BullMQ worker (services/queue.js is real, root queue.js is
+  dummy log-only - CONSOLIDATE TO ONE), deliver via deliverNotification, show read/unread.
+[U8] Staff queue/decisions: frontend filters local apps by dept. Action: wire to
+  GET /applications (dept-scoped server-side) + GET /applications/:id (minimised fields) +
+  PATCH /applications/:id/status + POST .../assign + document review endpoint.
+[U9] Admin users suspend/role change: local map only. Action: wire to admin users CRUD.
+  FIX backend: PATCH active flag is accepted by zod but ignored - implement activeStatus update
+  + prevent self-deactivate (already) + logout revoked tokens.
+[U10] Audit immutability: frontend log() appends locally. Action: replace with GET /audit-logs
+  read-only viewer; ensure backend audit() writes field names never values (already) + IP.
+[U11] Access-rules enforcement: frontend hides with lock emoji (bypassable). Action: enforce
+  in backend identityService via DepartmentFieldScope (already) + make frontend display-only.
+[U12] Receipts PDF: text only. Action: implement GET /receipts/:id PDF or signed URL + verify page.
+[U13] i18n Sesotho: only 11 nav keys, no i18next. Action: install i18next + react-i18next +
+  locale files en/st, wire preferredLanguage (PATCH /me, Accept-Language, backend t()).
+  Backend st has only 6/25 keys - complete translations with native-speaker review.
+[U14] PWA/offline/low-bandwidth: none (no manifest/sw). Action: add manifest.webmanifest +
+  service worker + TanStack Query cache (per docs) or document as deferred.
+[U15] Docs stack drift: Tailwind, TanStack Query, Vite PWA, React Hook Form + Zod (frontend),
+  MinIO/S3 production, Swagger completeness are documented but NOT in frontend.
+  Action: either install them (recommended: @tanstack/react-query, i18next, hook-form+zod)
+  or update docs to match prototype scope.
+
+--------------------------------------------------------------------------------
+6. KNOWN BACKEND BUGS TO FIX BEFORE / DURING SYNC (DO NOT IGNORE)
+--------------------------------------------------------------------------------
+[B1] notificationService uses wrong Prisma fields (where:{id/userId} vs notificationId/citizenId)
+  -> will 500 on every GET/PATCH notifications. FIX field names + test.
+[B2] GET /appointments/slots is STAFF-only, citizens cannot fetch slots to book. WIDEN to CITIZEN
+  (read-only) or add citizen-safe slots endpoint.
+[B3] PATCH /admin/users/:id accepts {active} but never updates activeStatus. IMPLEMENT + revoke sessions.
+[B4] PUT scopes does NOT invalidate Redis identity:{id} cache -> stale reads until citizen update.
+  DEL cache on scope change.
+[B5] GET /services + GET /departments require JWT in code but docs say public. DECIDE one
+  (recommend public catalogue, auth for detail) and align code + openapi.js + frontend.
+[B6] Dual queue impls: /queue.js (dummy, used by server.js) vs /services/queue.js (real,
+  used by services + worker.js). CONSOLIDATE to services/queue.js, update server.js import.
+[B7] worker.js references 'npm run worker' script that does not exist. ADD script or remove file.
+[B8] Submission/COMPLETION receipts never created (openapi promises receiptNumber on submit/approve;
+  only PAYMENT receipt is created in pay()). Either CREATE them or FIX openapi + frontend expectation.
+[B9] GET /audit-logs missing filters (resourceType/resourceId/from/to/offset) + X-Total-Count
+  header never set though CORS exposes it. IMPLEMENT.
+[B10] POST /admin/departments controller requires {ministryCode} but openapi says {ministry}. ALIGN.
+[B11] DELETE routes/auth.js (orphan, schema-mismatched national_id_number/citizen_id, wrong
+  staff credential lookup, tokens lack type claim -> passport rejects). Ensure no import remains.
+[B12] storage init HeadBucket/CreateBucket never called at startup; S3 keys absent -> local disk.
+  CALL init or document local-only for demo. Add ./uploads to .gitignore.
+[B13] .env SECRET COMMITTED (JWT_SECRET, DATABASE_URL, REDIS_URL). ROTATE all secrets + add .env.example.
+[B14] No prisma/migrations/ dir. RUN prisma migrate dev + commit migrations before integration tests.
+[B15] openapi.js x-planned flags + api.rest 'not yet implemented' list are STALE (all those endpoints
+  ARE mounted). REFRESH docs; only POST /auth/register|/login are truly unmounted.
+
+--------------------------------------------------------------------------------
+7. STEP-BY-STEP TASK LIST FOR AGENT (EXECUTE IN ORDER)
+--------------------------------------------------------------------------------
+PHASE 0 - FREEZE CONTRACT (no code yet):
+  O1. Read backend/routes/index.js + backend/openapi.js + backend/prisma/schema.prisma +
+      frontend/src/App.jsx + core.jsx + modules/*.jsx fully.
+  O2. Produce endpoint<->screen matrix (which screen calls which method+path with what payload).
+  O3. Decide baseURL strategy: VITE_API_URL (e.g. http://localhost:3000) + vite proxy for dev
+      to avoid CORS; confirm CORS origins in app.js. Output the matrix and get user approval.
+
+PHASE 1 - FOUNDATION (frontend infra + backend bugfixes):
+  F1. Frontend: npm install axios (or fetch wrapper) + @tanstack/react-query + i18next +
+      react-i18next + react-hook-form + zod + vite-plugin-pwa (or document if skipping).
+      Add .env + .env.example with VITE_API_URL, add vite.config.js server.proxy + PWA manifest.
+  F2. Backend: fix B1-B15 above. Add missing npm scripts (dev, start, worker, db:seed, prisma migrate).
+      Run docker compose up -d (postgres+redis+minio), npx prisma migrate dev, npm run db:seed.
+      Verify with README curl walkthrough (citizen OTP -> apply -> staff review -> identity verify
+      cache miss/hit -> address update invalidates -> admin audit-log) + Police 404 + citizen 403 cases.
+  F3. Add shared API client: src/lib/api.js (baseURL, Authorization: Bearer <JWT>, X-Request-Id,
+      refresh on 401 -> /login, global 403/404/500 error mapping to clear messages + recovery steps).
+      Add AuthContext: login (OTP request/verify), staff login, logout (POST /auth/logout + clear token),
+      persist JWT in localStorage/sessionStorage, decode role/dept for Guard/Only.
+
+PHASE 2 - MODULE-BY-MODULE WIRING (replace mocks, keep UI look):
+  M1. Auth (modules/auth.jsx): wire 2-step to OTP endpoints. Replace '123456' check with real verify.
+      Handle cooldown 60s (429), attempts exceeded, invalid code. Store {token,user}. Support
+      nationalId format validation (zod, same regex as backend 5-20 chars).
+  M2. Services + Apply wizard (citizen.jsx Services/Apply): GET /services catalogue (search+q/dept filter
+      server or client fallback). Consent checkbox -> POST /applications {serviceCode,formData,
+      documentIds,consent:true}. Upload step -> POST /documents multipart (type, file, applicationId?).
+      Show fee from service.feeAmount + currency LSL. On success show reference APP-XXXXXXXX +
+      link to tracking + receipt if issued. Validate with react-hook-form+zod before submit.
+  M3. Applications + Detail + Respond (citizen.jsx): GET /applications (mine), GET /applications/:id
+      (status timeline from ApplicationStatusHistory, missingDocuments, receipts, documents).
+      POST /applications/:id/respond {formData, new documentIds} when MORE_INFO_NEEDED.
+      POST /applications/:id/withdraw + POST /applications/:id/pay {paymentMethod}. Poll or
+      React Query refetchInterval for status changes. Derive progress % from real status enum
+      (SUBMITTED/UNDER_REVIEW/MORE_INFO_NEEDED/APPROVED/REJECTED/WITHDRAWN).
+  M4. Appointments (citizen.jsx Appointments): branch select MUST map to departmentCode
+      (e.g. Maseru->TRAFFIC or add branch table; document mapping explicitly). Flow:
+      GET slots -> POST /appointments {departmentCode,serviceCode?,startsAt ISO} ->
+      GET /appointments?mine -> POST cancel + GET queue-position {peopleAhead,estimatedWait}.
+      Validate date within today..+30d, weekday, 08:00-16:00, slot 30m. Show reference APT-XXXXXXXX.
+  M5. Notifications (citizen.jsx): GET /notifications?unread + PATCH read-all/read-one.
+      Show unreadCount badge in Shell header (replace local notes). Add 30s polling or SSE.
+      Keep 'SMS and email' subtitle only if gateway wired; else change to 'In-app + SMS/email when configured'.
+  M6. Staff Queue + Review (staff.jsx): GET /applications (dept auto-scoped by backend JWT) +
+      GET /applications/:id (already scope-filtered fields only) + POST assign (claim) +
+      PATCH status {UNDER_REVIEW/APPROVED/REJECTED/MORE_INFO_NEEDED,note} + document review
+      POST .../documents/:doc/review {APPROVED/REJECTED/NEEDS_RESUBMISSION,note}.
+      Show identity fields returned by POST /identity/verify {applicationId} + cache hit/miss badge.
+      Enforce svc.dept===user.departmentCode client-side AND rely on server 403/404.
+  M7. Admin (admin.jsx AdminHome/Users/Audit/AccessRules): AdminHome metrics from
+      GET /applications + GET /admin/users + GET /audit-logs counts (or add GET /admin/metrics).
+      Users -> GET/POST/PATCH /admin/users (role select CITIZEN/ADMIN/HOME_AFFAIRS_OFFICER/
+      DEPARTMENT_STAFF + departmentCode + active toggle - now functional after B3).
+      Audit -> GET /audit-logs?Action&actorId&limit&offset (read-only table, newest-first).
+      AccessRules -> GET/PUT /admin/departments/:code/scopes (block HA edit, invalidate cache note).
+  M8. Citizen profile + officer edit: PATCH /me {email,preferredLanguage} + language toggle persists.
+      Add officer screen for POST/PATCH /citizens (fullName split, address/phone update + cache DEL).
+
+PHASE 3 - CROSS-CUTTING (ACID, security, UX):
+  C1. ACID/transactions: keep backend $transaction + pg_advisory_xact_lock for pay/book/checkIn/callNext.
+      Frontend must handle 409 (slot taken/terminal state/already-paid) with retry + friendly message,
+      402 payment fail, idempotent attach (409-safe). Test concurrent double-book + double-pay.
+  C2. RBAC: remove all client-side ACCESS filtering as security boundary; keep as display hint only.
+      Verify: citizen cannot call /identity/verify (403), Police token with Traffic appId -> 404,
+      HA officer GET /applications -> [] (document or widen if staff need list), staff cannot download
+      other-dept docs (404), admin cannot changeStatus (403). Add automated tests for each.
+  C3. Audit: ensure every M1-M8 action writes audit() with field names not values + actor/role/dept/IP.
+      Frontend Audit viewer must be read-only. Verify admin audit trail shows LOGIN + SUBMIT +
+      VERIFY + STATUS_CHANGE + DOWNLOAD + ACCESS_DENIED.
+  C4. Cache: frontend TanStack Query cache (minutes-hours for profile/catalogue) + backend Redis
+      (identity 300s, slots 10s, OTP 300s). Implement invalidation: citizen update DEL identity,
+      scope change DEL identity (new), book/cancel/no-show DEL slots. Show cache hit/miss in Review
+      for demo. Never cache sensitive data >15m.
+  C5. Validation + errors: zod on both ends (frontend hook-form+zod mirrors backend controller zod).
+      Map backend {error,hint?,issues?} to field errors + recovery instructions (WCAG: no bare
+      'Error occurred'). Handle 413 file too large, magic-byte mismatch, Multer errors.
+  C6. i18n + accessibility: complete i18next en/st bundles (all labels/buttons/errors), persist
+      preferredLanguage, keep skip-link/aria/progress/text-scale/A-/A+/colour+text+symbol status.
+      Get Sesotho reviewed by native speaker before submission.
+  C7. Files + receipts + notifications infra: choose LocalStorage (demo) vs MinIO/S3 (prod) via
+      S3_ACCESS_KEY_ID presence; ensure ./uploads excluded; implement receipt PDF/signed URL +
+      public verify page; consolidate to single BullMQ queue + implement or stub SMS/email gateway
+      with logged fallback + DEMO_MODE flag for same-day check-in.
+  C8. Docs + OpenAPI: refresh openapi.js (remove stale x-planned, fix ministry vs ministryCode,
+      document auth on /services + slots widening + receipts issuance policy), regenerate /docs,
+      update README demo walkthrough + seed logins + branch->dept mapping + .env.example.
+
+--------------------------------------------------------------------------------
+8. API MAPPING CHEAT SHEET (FRONTEND ACTION -> BACKEND CALL)
+--------------------------------------------------------------------------------
+Login citizen: POST /auth/otp/request {nationalId} -> {masked?, devOtp} ;
+  POST /auth/otp/verify {nationalId, code} -> {token, user:{id,role}}.
+Login staff: POST /auth/staff/login {email,password} -> {token, user:{role,departmentCode}}.
+Logout: POST /auth/logout (Authorization: Bearer <JWT>).
+Me: GET /me -> profile; PATCH /me {email,preferredLanguage}.
+Citizens (officer): POST /citizens {fullName,dateOfBirth,gender,citizenship,...} ;
+  PATCH /citizens/:nationalId {fullName,address,phone}.
+Catalogue: GET /services?dept=&q= ; GET /departments.
+Apply: POST /documents (multipart file+type) -> {fileId/documentId} ;
+  POST /applications {serviceCode,formData,documentIds} -> {id,reference,status,missingDocuments}.
+Track: GET /applications ; GET /applications/:id ; POST /applications/:id/respond {formData} ;
+  POST /applications/:id/withdraw ; POST /applications/:id/pay {paymentMethod}.
+Verify (staff): POST /identity/verify {applicationId} (dept staff) or {nationalId} (HA officer)
+  -> {citizen:{filtered fields}, cache: hit|miss}.
+Staff queue: GET /applications (auto dept-scoped) ; POST /applications/:id/assign {assign:true} ;
+  PATCH /applications/:id/status {status,note} ; POST /applications/:id/documents/:doc/review.
+Docs: GET /documents ; GET /documents/:id/download (blob) ; DELETE /documents/:id.
+Appointments: GET /appointments/slots?departmentCode&date=YYYY-MM-DD ; POST /appointments
+  {departmentCode,serviceCode?,startsAt} ; GET /appointments ; POST /appointments/:id/cancel|check-in|complete|no-show ;
+  GET /appointments/:id/queue-position ; GET /queue?date ; POST /queue/call-next.
+Notifications: GET /notifications ; PATCH /notifications/read-all ; PATCH /notifications/:id/read.
+Receipts/payments: GET /receipts ; GET /receipts/:id ; GET /receipts/verify/:receiptNumber ; GET /payments.
+Admin: GET/POST /admin/users ; PATCH /admin/users/:id ; POST /admin/departments ;
+  GET/PUT /admin/departments/:code/scopes ; POST/PATCH /admin/services ; GET /audit-logs?action&actorId&limit&offset.
+All authenticated calls: Header Authorization: Bearer <JWT>. Handle 401 (re-login),
+  403 (wrong role/dept), 404 (other dept's app), 409 (conflict/terminal), 413 (file), 429 (rate/OTP), 402 (pay fail).
+
+--------------------------------------------------------------------------------
+9. DATABASE QUERY REQUIREMENTS (AGENT MUST ENSURE)
+--------------------------------------------------------------------------------
+- Use Prisma only (no raw SQL except advisory locks already in code). All PKs BigInt -> serialize as String.
+- Every write that touches >1 table MUST be in prisma.$transaction (pay, status change, doc review,
+  respond, withdraw, book, checkIn, callNext, createStaff, setScopes). No partial saves.
+- Ownership checks in EVERY query: citizenId===token.id for citizen reads/writes/documentIds;
+  departmentId===token.departmentCode for staff lists/views/downloads; admin bypass only for list/audit.
+- Identity verify: lookup DepartmentFieldScope for dept, select ONLY those columns from Citizen,
+  check Redis identity:{nationalId} first (TTL 300s), on miss query DB then setJSON, on citizen/scope
+  update DEL key. Write IdentityRequest row + AuditLog (field names only).
+- Appointments: advisory lock hashtext(slot:{dept}:{iso}) for capacity (max 2/slot) + 1-per-dept-per-day
+  clash check; queue lock hashtext(queue:{dept}:{date}) for queueNumber max+1. Invalidate slots cache.
+- AuditLog: append-only (create only, no update/delete endpoint). Include actorId/role/dept/action/
+  resourceType/resourceId/details(non-PII)/ip. ACCESS_DENIED on every 403.
+- Seed + migrations must run clean on fresh docker postgres. Never edit migrated data manually.
+- Add indexes where frontend filters (status, departmentId, citizenId, reference, startsAt).
+
+--------------------------------------------------------------------------------
+10. ACCEPTANCE CRITERIA (DEMO MUST PASS ALL)
+--------------------------------------------------------------------------------
+[A1] Citizen OTP login (real devOtp from backend) -> JWT stored -> /me shows profile -> reload stays logged in.
+[A2] Citizen Services list comes from GET /services (not constant), search + dept filter work.
+[A3] Citizen uploads PDF/JPG/PNG <=5MB via file picker -> attached -> POST /applications returns
+  APP-XXXXXXXX -> appears in My Applications with SUBMITTED.
+[A4] Citizen books appointment: slots fetched from backend, POST returns APT-XXXXXXXX, list shows it,
+  queue-position shows peopleAhead + estimatedWait, cancel works.
+[A5] Citizen receives IN_APP notification on submit/status change/pay/appointment; unread badge updates;
+  mark-read persists after reload.
+[A6] Traffic staff login -> sees ONLY Traffic queue -> opens app -> POST /identity/verify returns
+  ONLY allowed fields (e.g. name/nid/dob) + cache miss then hit on repeat.
+[A7] Home Affairs updates address via PATCH /citizens/:nationalId -> Traffic verify again is cache miss
+  with new address. Scope change also invalidates.
+[A8] Staff approve/info/reject with note works; info -> citizen respond returns to UNDER_REVIEW;
+  APPROVED blocked until required docs verified; terminal states locked (409).
+[A9] Payment for fee service returns receiptNumber + appears in GET /receipts; public verify page
+  validates HMAC; free service returns 409 with clear message.
+[A10] Police token + Traffic applicationId -> 404; citizen token on /identity/verify -> 403; both in audit log.
+[A11] Admin audit viewer shows LOGIN/SUBMIT/VERIFY/STATUS_CHANGE/DOWNLOAD/ACCESS_DENIED with actor + time;
+  filters + pagination work; no edit/delete possible.
+[A12] Admin changes DepartmentFieldScope (e.g. remove address from TRAFFIC) -> subsequent verify omits it.
+[A13] Concurrent double-book same slot (capacity 2) third request gets 409; double-pay gets 409; no partial rows.
+[A14] 401 expired token redirects to /login; 403/404/413/429/402 all show clear Sesotho+English messages
+  with recovery steps (not 'Error occurred'); no mock fallback data shown on failure.
+[A15] EN<->ST toggle translates nav + forms + errors; preferredLanguage persists via PATCH /me.
+[A16] Swagger /docs matches live routes; README curl walkthrough passes verbatim on fresh DB.
+[A17] No hardcoded '123456', no client-side role tampering grants access, no committed secrets.
+
+--------------------------------------------------------------------------------
+11. CONSTRAINTS FOR AGENT
+--------------------------------------------------------------------------------
+- Work in small PR-sized steps: foundation -> one module at a time -> cross-cutting. Run backend
+  tests/curl + frontend npm run dev after each module.
+- Do NOT break existing backend RBAC/cache/audit semantics. If a frontend need conflicts (e.g. slots
+  auth, HA empty list, receipt issuance), propose the fix explicitly and update openapi + docs.
+- Prefer additive Prisma migrations. Never drop tables. Keep BigInt PKs.
+- Keep UI styling/routes as-is; only swap data layer from mocks to API. Delete mock arrays only after
+  the real call works (feature-flag if needed).
+- Output after each phase: files changed, endpoints wired, queries touched, how ACID/RBAC/audit verified.
+
+--------------------------------------------------------------------------------
+12. IMPLEMENTATION UPDATE (applied after the scan — read this first)
+--------------------------------------------------------------------------------
+The B1-B15 backend fixes are DONE (code-only, zero migrations, no table changes):
+- All :id / *Id validations changed from UUID to numeric BigInt ids (new dbId schema in
+  controllers/util.js) — detail/action endpoints now accept real ids like "1".
+- notificationService rewritten to the real schema fields (citizenId, notificationId,
+  Citizen.phone/contactEmail); BigInt converted to String before BullMQ enqueue.
+- server.js now starts the REAL worker (services/queue.js); orphan routes/auth.js deleted.
+- GET /services + /departments are public (as documented); GET /appointments/slots allows CITIZEN.
+- PUT scopes bumps an identity-cache version (stale copies never served).
+- PATCH /admin/users active suspends/restores via credential activeStatus (Staff has no
+  status column — no schema change). Self-deactivate still blocked.
+- GET /audit-logs gained resourceType/resourceId/from/to/offset + X-Total-Count (array shape kept).
+- openapi.js + api.rest refreshed (no stale x-planned; ids documented as numeric strings).
+- Frontend live-id detection accepts numeric ids (isLiveId in src/lib/mapping.js).
+- Added backend scripts: dev / start / worker / db:seed.
+NOT done (kept out on purpose): submission/completion receipts, Permission-system use,
+ministry endpoint, identity-request viewer, real SMS/email gateway (still logged stub).
+
+================================================================================
+END OF PROMPT - PASTE TO AGENT ALONG WITH: tech choices (React Query/i18next/PWA yes/no?),
+branch->department mapping decision, and whether to implement real SMS/email or keep logged stub.
+================================================================================

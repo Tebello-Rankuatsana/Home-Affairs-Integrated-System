@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { prisma } from '../db.js';
 import { audit } from '../audit.js';
+import { bumpScopeVersion } from '../cache.js';
 import { httpError } from '../middleware/error.js';
 import { HOME_AFFAIRS, IDENTITY_FIELDS } from '../constants.js';
 
@@ -141,6 +142,25 @@ export async function updateUser(ctx, id, changes) {
       select: SAFE_STAFF,
     });
 
+    // Staff has no status column, so suspend/restore works through login
+    // credentials (staffLogin only accepts activeStatus: true). No table change.
+    if (changes.active === false) {
+      await tx.authenticationCredential.updateMany({
+        where: { staffId: BigInt(id) },
+        data: { activeStatus: false },
+      });
+    } else if (changes.active === true) {
+      const latest = await tx.authenticationCredential.findFirst({
+        where: { staffId: BigInt(id) },
+        orderBy: { credentialId: 'desc' },
+      });
+      if (!latest) throw httpError(409, 'No credentials to restore for this user');
+      await tx.authenticationCredential.updateMany({
+        where: { staffId: BigInt(id), credentialId: latest.credentialId },
+        data: { activeStatus: true },
+      });
+    }
+
     if (changes.role !== undefined) {
       const roleRow = await resolveRoleByName(changes.role);
       await tx.staffRole.deleteMany({ where: { staffId: BigInt(id) } });
@@ -214,6 +234,7 @@ export async function setScopes(ctx, departmentCode, fields) {
       data: after.map((field) => ({ departmentId: dept.departmentId, field })),
     }),
   ]);
+  bumpScopeVersion(); // retire cached identity copies released under the old field set
 
   await audit(ctx, {
     action: 'SCOPE_UPDATE',

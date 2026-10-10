@@ -1,6 +1,37 @@
 // CORE: data, translations (EN / Sesotho), global store, shared UI kit and app shell.
 import { createContext, useCallback, useContext, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
+import { clearSession, logoutRemote } from './lib/api.js';
+import { BACKEND_TO_DEPT } from './lib/mapping.js';
+
+// Map a live backend session to the prototype user shape so ALL existing screens
+// (CitizenHome, Queue, guards, ACCESS matrix) keep working unchanged.
+export function toFrontUser(stored) {
+  if (!stored) return null;
+  const role = stored.backendRole || stored.role;
+  if (role === 'CITIZEN' || role === 'citizen') {
+    const name = stored.name || [stored.firstName, stored.lastName].filter(Boolean).join(' ') || 'Citizen';
+    return {
+      id: stored.id || stored.nationalId, loginId: stored.nationalId, role: 'citizen',
+      name, nid: stored.nationalId, dob: stored.dateOfBirth || '', citizenship: stored.citizenship || 'Mosotho',
+      address: stored.address || '', phone: stored.phone || '', onFile: stored.onFile || [], active: true,
+      _live: true,
+    };
+  }
+  if (role === 'ADMIN' || role === 'admin') {
+    return {
+      id: stored.id || stored.email, loginId: stored.email || 'ADM-01', role: 'admin',
+      name: stored.name || stored.email || 'Administrator', dept: 'HA', active: true, _live: true,
+    };
+  }
+  // DEPARTMENT_STAFF / HOME_AFFAIRS_OFFICER -> staff
+  const dept = BACKEND_TO_DEPT[stored.department || stored.departmentCode] || stored.dept || 'TT';
+  return {
+    id: stored.id || stored.email, loginId: stored.email || stored.loginId, role: 'staff',
+    name: stored.name || stored.email || 'Staff', dept, active: true,
+    backendRole: role, _live: true,
+  };
+}
 
 /* ---------- Icons (inline SVG, no extra dependency; stroke follows currentColor) ---------- */
 const ICONS = {
@@ -108,7 +139,13 @@ export function Provider({ children }) {
     if (u) { setUser(u); log('Sign-in', `${u.role} authenticated with ID + OTP`, u.name); }
     return u;
   };
-  const logout = () => setUser(null);
+  // Live backend session (JWT already stored by the caller). Keeps mock data as fallback.
+  const loginAs = (frontUser) => {
+    setUser(frontUser);
+    log('Sign-in', `${frontUser.role} authenticated via live API`, frontUser.name);
+    return frontUser;
+  };
+  const logout = () => { setUser(null); clearSession(); logoutRemote(); };
   const patch = (id, fn) => setApps((as) => as.map((a) => (a.id === id ? fn(a) : a)));
   const submit = (svc, docs) => {
     const id = 'GS-' + (1000 + apps.length + 1);
@@ -129,7 +166,7 @@ export function Provider({ children }) {
   const book = (a) => { setAppts((x) => [...x, { id: Date.now(), nid: user.nid, ...a }]); log('Appointment booked', `${svcOf(a.svc).name} · ${a.branch} ${a.date} ${a.slot}`); notify(`Appointment confirmed: ${a.branch}, ${a.date} at ${a.slot}.`); flash('Appointment confirmed'); };
   const setUserField = (id, k, v) => { setUsers((us) => us.map((u) => (u.id === id ? { ...u, [k]: v } : u))); log('User access changed', `User #${id}: ${k} → ${v}`); };
 
-  const v = { user, lang, setLang, textScale, setTextScale, apps, appts, notes, setNotes, audit, users, toast, t, login, logout, submit, decide, respond, book, log, flash, setUserField };
+  const v = { user, lang, setLang, textScale, setTextScale, apps, appts, notes, setNotes, audit, users, toast, t, login, loginAs, logout, submit, decide, respond, book, log, flash, setUserField, notify };
   return <Ctx.Provider value={v}>{children}</Ctx.Provider>;
 }
 

@@ -22,10 +22,11 @@ const queue = config.redisUrl
 
 // With Redis: queue the job for the worker. Without Redis: deliver in the background of this process.
 export async function enqueueDelivery(notificationId) {
+  const id = String(notificationId); // BullMQ payloads must be JSON-serialisable (no BigInt)
   if (queue) {
-    await queue.add('deliver', { notificationId });
+    await queue.add('deliver', { notificationId: id });
   } else {
-    setImmediate(() => deliverNotification(notificationId).catch((err) => console.error('delivery failed', err.message)));
+    setImmediate(() => deliverNotification(id).catch((err) => console.error('delivery failed', err.message)));
   }
 }
 

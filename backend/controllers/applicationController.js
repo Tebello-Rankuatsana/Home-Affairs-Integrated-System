@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import * as applications from '../services/applicationService.js';
 import { APPLICATION_STATUSES, STAFF_SETTABLE_STATUSES } from '../constants.js';
-import { ctx } from './util.js';
+import { ctx, dbId } from './util.js';
 
-const uuid = z.string().uuid();
+const uuid = dbId;
 
 export async function submit(req, res) {
   const body = z

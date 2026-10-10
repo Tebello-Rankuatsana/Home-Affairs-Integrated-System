@@ -9,39 +9,48 @@ function render(profile, payload) {
   return '';
 }
 
+// citizenId is the Citizen PK (BigInt). Profile/contact lookups use the real
+// schema fields: CitizenProfile.citizenId, Citizen.phone / Citizen.contactEmail.
 export async function notify(citizenId, payload) {
   try {
-    const profile = await prisma.citizenProfile.findUnique({ where: { id: citizenId } });
-    if (!profile) return;
+    const id = BigInt(citizenId);
+    const citizen = await prisma.citizen.findUnique({
+      where: { citizenId: id },
+      include: { profile: true },
+    });
+    if (!citizen) return;
 
-    const message = render(profile, payload);
+    const message = render(citizen.profile, payload);
     if (!message) return;
 
     await prisma.notification.create({
-      data: { citizenId, channel: 'IN_APP', type: payload.type, message, status: 'SENT' },
+      data: { citizenId: id, channel: 'IN_APP', type: payload.type, message, status: 'SENT' },
     });
 
     const external = [];
-    if (profile.phone) external.push('SMS');
-    if (profile.email) external.push('EMAIL');
+    if (citizen.phone) external.push('SMS');
+    if (citizen.contactEmail) external.push('EMAIL');
 
     for (const channel of external) {
       const n = await prisma.notification.create({
-        data: { citizenId, channel, type: payload.type, message, status: 'PENDING' },
+        data: { citizenId: id, channel, type: payload.type, message, status: 'PENDING' },
       });
-      await enqueueDelivery(n.id);
+      await enqueueDelivery(String(n.notificationId));
     }
   } catch (err) {
     console.error('notify failed:', err.message);
   }
 }
 
+async function ownCitizenId(ctx) {
+  return BigInt(ctx.user.id);
+}
+
 export async function listNotifications(ctx, { unreadOnly }) {
-  const profile = await prisma.citizenProfile.findUnique({ where: { userId: ctx.user.id } });
-  if (!profile) return { unreadCount: 0, items: [] };
+  const citizenId = await ownCitizenId(ctx);
 
   const items = await prisma.notification.findMany({
-    where: { citizenId: profile.id, channel: 'IN_APP' },
+    where: { citizenId, channel: 'IN_APP' },
     orderBy: { createdAt: 'desc' },
     take: 100,
   });
@@ -51,8 +60,8 @@ export async function listNotifications(ctx, { unreadOnly }) {
 
   return {
     unreadCount,
-    items: filtered.map(({ id, type, message, readAt, createdAt }) => ({
-      id,
+    items: filtered.map(({ notificationId, type, message, readAt, createdAt }) => ({
+      id: String(notificationId),
       type,
       message,
       readAt,
@@ -62,23 +71,24 @@ export async function listNotifications(ctx, { unreadOnly }) {
 }
 
 export async function markRead(ctx, id) {
-  const profile = await prisma.citizenProfile.findUnique({ where: { userId: ctx.user.id } });
-  if (!profile) throw httpError(404, 'Profile not found');
-  const n = await prisma.notification.findUnique({ where: { id } });
-  if (!n || n.citizenId !== profile.id || n.channel !== 'IN_APP') {
+  const citizenId = await ownCitizenId(ctx);
+  const n = await prisma.notification.findUnique({ where: { notificationId: BigInt(id) } });
+  if (!n || n.citizenId !== citizenId || n.channel !== 'IN_APP') {
     throw httpError(404, 'Notification not found');
   }
   if (!n.readAt) {
-    await prisma.notification.update({ where: { id }, data: { readAt: new Date() } });
+    await prisma.notification.update({
+      where: { notificationId: n.notificationId },
+      data: { readAt: new Date() },
+    });
   }
-  return { id, read: true };
+  return { id: String(n.notificationId), read: true };
 }
 
 export async function markAllRead(ctx) {
-  const profile = await prisma.citizenProfile.findUnique({ where: { userId: ctx.user.id } });
-  if (!profile) throw httpError(404, 'Profile not found');
+  const citizenId = await ownCitizenId(ctx);
   const result = await prisma.notification.updateMany({
-    where: { citizenId: profile.id, channel: 'IN_APP', readAt: null },
+    where: { citizenId, channel: 'IN_APP', readAt: null },
     data: { readAt: new Date() },
   });
   return { updated: result.count };
