@@ -23,9 +23,11 @@ small{display:block;color:var(--mute)}.muted{color:var(--mute)}
 /* ---------- Header ---------- */
 .hdr{background:linear-gradient(100deg,var(--deep),var(--deep-2));color:#fff;display:flex;justify-content:space-between;align-items:center;padding:10px 24px;border-bottom:3px solid var(--gold);flex-wrap:wrap;gap:8px;position:sticky;top:0;z-index:10;box-shadow:0 4px 18px rgba(6,48,31,.25)}
 .brand{display:flex;gap:12px;align-items:center}.brand small{color:#bfe5cd}
-.brand-logo{display:block;width:150px;height:auto;max-width:100%}
+.brand-crest{display:grid;place-items:center;width:56px;height:56px;padding:5px;border-radius:14px;background:#fff;border:2px solid var(--gold);box-shadow:0 2px 8px rgba(0,0,0,.25);flex-shrink:0}
+.brand-crest img{display:block;width:100%;height:100%;object-fit:contain}
 .brand-copy{display:flex;flex-direction:column;line-height:1.15}
-.crest{background:var(--gold);color:var(--deep);border-radius:12px;width:52px;height:52px;display:grid;place-items:center}
+.crest{background:#fff;border:3px solid var(--gold);border-radius:22px;width:112px;height:112px;padding:10px;display:grid;place-items:center;box-shadow:0 10px 28px rgba(0,0,0,.3)}
+.crest img{display:block;width:100%;height:100%;object-fit:contain}
 .hdr-r{display:flex;align-items:center;gap:0;flex-wrap:wrap}
 .nav-section{display:inline-flex;align-items:center;min-height:44px;padding:0 12px;position:relative}
 .nav-section + .nav-section{border-left:1px solid rgba(255,255,255,.14)}
@@ -136,7 +138,7 @@ progress{width:100%;height:8px;margin-top:6px;accent-color:var(--green);border-r
 /* ---------- Login ---------- */
 .auth{display:grid;grid-template-columns:1fr 1fr;min-height:100vh}
 .auth aside{position:relative;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;gap:18px;background:linear-gradient(150deg,var(--deep),#0f6b43);color:#fff;padding:48px 48px;overflow:hidden}
-.auth aside::before{content:"";position:absolute;inset:-8% -8% 8% -8%;background-image:url('/govserve-logo.svg');background-repeat:no-repeat;background-position:center;background-size:contain;opacity:.06;pointer-events:none;z-index:0}
+.auth aside::before{content:"";position:absolute;inset:-8% -8% 8% -8%;background-image:url('../images/coat-of-arms-of-lesotho-seeklogo.png');background-repeat:no-repeat;background-position:center;background-size:contain;opacity:.07;filter:grayscale(1) brightness(2);pointer-events:none;z-index:0}
 .auth aside::after{content:"";position:absolute;width:420px;height:420px;border-radius:50%;right:-140px;bottom:-140px;background:radial-gradient(circle,rgba(200,160,74,.35),transparent 70%);pointer-events:none}
 .auth aside > *{position:relative;z-index:1}
 .auth aside h1{color:#fff;margin:0;font-size:clamp(2.1rem,3vw,3.2rem);line-height:1.05}
