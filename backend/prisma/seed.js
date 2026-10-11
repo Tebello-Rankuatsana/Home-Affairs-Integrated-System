@@ -9,6 +9,8 @@ const PASSWORD = process.env.SEED_PASSWORD || 'ChangeMe-12345';
 const passwordHash = await bcrypt.hash(PASSWORD, 10);
 
 const MINISTRIES = [
+  { code: 'NATIONAL_ID_RENEWAL', name: 'National ID renewal', dept: 'HOME_AFFAIRS',
+  docs: ['BIRTH_CERTIFICATE', 'PHOTO'], fee: 50, days: 5 },
   { code: 'MHA', name: 'Ministry of Home Affairs' },
   { code: 'MPWT', name: 'Ministry of Public Works and Transport' },
   { code: 'MFDP', name: 'Ministry of Finance and Development Planning' },
