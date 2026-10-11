@@ -1,31 +1,47 @@
-// AUTH MODULE: Login (ID number + OTP, with alternative methods for accessibility).
+// AUTH MODULE: citizens sign in with National ID + one-time code; staff, officers and admins use email + password.
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp, Field, Icon } from '../core.jsx';
+import { api } from '../api.js';
 import coatOfArms from '../../images/coat-of-arms-of-lesotho-seeklogo.png';
 
-const DEMO = [['Citizen', 'LS-9004127788'], ['Traffic staff', 'TT-STAFF-01'], ['Passport staff', 'PP-STAFF-01'], ['Administrator', 'ADM-01']];
-const METHODS = { sms: 'SMS code to my phone', email: 'Code to my email', voice: 'Voice call with the code (no reading needed)', bio: 'Fingerprint on my device' };
-
 export function Login() {
-  const { login } = useApp();
+  const { login, staffLogin } = useApp();
   const nav = useNavigate();
+  const [mode, setMode] = useState('citizen'); // 'citizen' | 'staff'
   const [id, setId] = useState('');
   const [otp, setOtp] = useState('');
-  const [method, setMethod] = useState('sms');
+  const [devOtp, setDevOtp] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [step, setStep] = useState(1);
   const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
 
-  const next = (e) => {
-    e.preventDefault();
+  const switchMode = (m) => { setMode(m); setStep(1); setErr(''); setOtp(''); };
+  const run = async (fn) => {
+    setBusy(true); setErr('');
+    try { await fn(); } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+
+  const sendCode = (e) => {
+    e?.preventDefault();
     if (!/^[A-Z0-9-]{5,}$/i.test(id.trim())) return setErr('Enter your National ID number exactly as printed on your ID, for example LS-9004127788.');
-    setErr(''); setStep(2);
+    return run(async () => {
+      const r = await api.auth.requestOtp(id.trim());
+      setDevOtp(r?.devOtp ?? ''); // the backend only returns this in development / demo mode
+      setOtp(''); setStep(2);
+    });
   };
   const verify = (e) => {
     e.preventDefault();
-    if (otp !== '123456') return setErr('That code is not correct. Check your messages and try again, or choose a different way to receive a code.');
-    if (!login(id)) { setStep(1); return setErr('We could not find an active account for that ID. Check the number or visit a service centre for help.'); }
-    nav('/app');
+    if (!/^\d{6}$/.test(otp)) return setErr('Enter the 6-digit code we sent you.');
+    return run(async () => { await login(id.trim(), otp); nav('/app'); });
+  };
+  const signInStaff = (e) => {
+    e.preventDefault();
+    if (!email.trim() || !password) return setErr('Enter your work email and password.');
+    return run(async () => { await staffLogin(email.trim(), password); nav('/app'); });
   };
 
   return (
@@ -41,23 +57,36 @@ export function Login() {
         </ul>
       </aside>
       <main id="main">
-        <form className="card-b card" onSubmit={step === 1 ? next : verify} noValidate>
-          <h2>{step === 1 ? 'Sign in' : 'Enter your code'}</h2>
-          {step === 1 ? (
-            <Field label="National ID number" hint="This is the number on your national ID card." error={err}>
-              <input className="input" value={id} onChange={(e) => setId(e.target.value)} autoComplete="username" inputMode="text" />
-            </Field>
+        <form className="card-b card" onSubmit={mode === 'staff' ? signInStaff : step === 1 ? sendCode : verify} noValidate>
+          <h2>{mode === 'staff' ? 'Staff sign in' : step === 1 ? 'Sign in' : 'Enter your code'}</h2>
+          <div className="seg" role="group" aria-label="Who is signing in">
+            <button type="button" aria-pressed={mode === 'citizen'} onClick={() => switchMode('citizen')}><Icon name="users" size={16} />Citizen</button>
+            <button type="button" aria-pressed={mode === 'staff'} onClick={() => switchMode('staff')}><Icon name="key" size={16} />Staff</button>
+          </div>
+
+          {mode === 'staff' ? (
+            <>
+              <Field label="Work email"><input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" /></Field>
+              <Field label="Password" error={err}><input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" /></Field>
+              <button className="btn primary block" type="submit" disabled={busy}><Icon name={busy ? 'loader' : 'log-out'} size={16} className={busy ? 'spin' : ''} />Sign in</button>
+            </>
+          ) : step === 1 ? (
+            <>
+              <Field label="National ID number" hint="This is the number on your national ID card." error={err}>
+                <input className="input" value={id} onChange={(e) => setId(e.target.value)} autoComplete="username" inputMode="text" />
+              </Field>
+              <button className="btn primary block" type="submit" disabled={busy}><Icon name={busy ? 'loader' : 'arrow-right'} size={16} className={busy ? 'spin' : ''} />Send me a code</button>
+            </>
           ) : (
             <>
-              <Field label="How should we verify you?"><select className="input" value={method} onChange={(e) => setMethod(e.target.value)}>{Object.entries(METHODS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
-              <Field label="6-digit code" hint="Prototype: use 123456." error={err}><input className="input" value={otp} onChange={(e) => setOtp(e.target.value)} inputMode="numeric" maxLength={6} autoComplete="one-time-code" /></Field>
+              <p className="muted">We sent a 6-digit code to the phone number or email Home Affairs has on file for <b>{id.trim()}</b>.</p>
+              {devOtp && <p className="callout warn"><Icon name="alert" size={18} />Prototype mode: your code is <b>{devOtp}</b>.</p>}
+              <Field label="6-digit code" error={err}><input className="input" value={otp} onChange={(e) => setOtp(e.target.value)} inputMode="numeric" maxLength={6} autoComplete="one-time-code" /></Field>
+              <button className="btn primary block" type="submit" disabled={busy}><Icon name={busy ? 'loader' : 'check'} size={16} className={busy ? 'spin' : ''} />Verify and sign in</button>
+              <button type="button" className="btn block" disabled={busy} onClick={sendCode}><Icon name="refresh" size={16} />Send a new code</button>
+              <button type="button" className="btn ghost block" onClick={() => { setStep(1); setErr(''); }}>Back</button>
             </>
           )}
-          <button className="btn primary block" type="submit">{step === 1 ? 'Continue' : 'Verify and sign in'}</button>
-          {step === 2 && <button type="button" className="btn ghost block" onClick={() => { setStep(1); setErr(''); }}>Back</button>}
-          <hr />
-          <p className="muted">Prototype demo accounts:</p>
-          <div className="chips">{DEMO.map(([l, v]) => <button type="button" key={v} className="chip" onClick={() => { setId(v); setStep(1); setErr(''); }}>{l}</button>)}</div>
         </form>
       </main>
     </div>
