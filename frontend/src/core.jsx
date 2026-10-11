@@ -1,14 +1,17 @@
-// CORE: translations (EN / Sesotho), global store (talks to the backend through api.js), shared UI kit and app shell.
+// Core store, icons, translations, shared UI kit, and the app shell.
+// Provider talks to the backend through api.js. Every page reads state
+// from useApp().
+
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import coatOfArms from '../images/lesotho-coat-of-arms.png';
+import coatOfArms from '../images/coat-of-arms-of-lesotho-seeklogo.png';
 import {
-  api, asList, loadSession, normalizeDept, normalizeDoc, normalizeProfile, normalizeService,
-  saveSession, setOnUnauthorized, setToken,
+  api, asList, loadSession, normalizeDept, normalizeDoc, normalizeProfile,
+  normalizeService, saveSession, setOnUnauthorized, setToken,
 } from './api.js';
 import { humanize } from './format.js';
 
-/* ---------- Icons (inline SVG, no extra dependency; stroke follows currentColor) ---------- */
+// Icons
 const ICONS = {
   check: <polyline points="20 6 9 17 4 12" />,
   x: <><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></>,
@@ -43,52 +46,132 @@ const ICONS = {
   'arrow-right': <><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></>,
   'credit-card': <><rect x="2" y="5" width="20" height="14" rx="2" /><line x1="2" y1="10" x2="22" y2="10" /></>,
   refresh: <><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></>,
+  building: <><rect x="4" y="2" width="16" height="20" rx="2" /><path d="M9 22v-4h6v4" /><path d="M8 6h.01M16 6h.01M8 10h.01M16 10h.01M8 14h.01M16 14h.01" /></>,
+  'arrow-left': <><path d="M19 12H5" /><path d="m12 19-7-7 7-7" /></>,
 };
+
 export const Icon = ({ name, size = 16, className = '' }) => (
-  <svg className={'icon ' + className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">{ICONS[name]}</svg>
+  <svg className={'icon ' + className} width={size} height={size} viewBox="0 0 24 24"
+    fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+    strokeLinejoin="round" aria-hidden="true" focusable="false">{ICONS[name]}</svg>
 );
 
-/* ---------- Labels and status vocabulary (the data itself now comes from the backend) ---------- */
-export const FIELD_LABELS = { fullName: 'Full name', nationalId: 'National ID no.', dateOfBirth: 'Date of birth', citizenship: 'Citizenship', address: 'Address', phone: 'Phone' };
-
-// Status always has text + icon + colour (never colour alone). Third item is an icon name.
-export const STATUS = {
-  submitted: ['Submitted', 'slate', 'send'], review: ['Under review', 'amber', 'clock'], info: ['More information needed', 'purple', 'alert'],
-  approved: ['Approved', 'green', 'check-circle'], rejected: ['Rejected', 'red', 'x-circle'], withdrawn: ['Withdrawn', 'slate', 'x-circle'],
+// Status vocabulary
+export const FIELD_LABELS = {
+  fullName: 'Full name',
+  nationalId: 'National ID no.',
+  dateOfBirth: 'Date of birth',
+  citizenship: 'Citizenship',
+  address: 'Address',
+  phone: 'Phone',
 };
-const API_STATUS = { SUBMITTED: 'submitted', UNDER_REVIEW: 'review', MORE_INFO_NEEDED: 'info', APPROVED: 'approved', REJECTED: 'rejected', WITHDRAWN: 'withdrawn' };
+
+export const STATUS = {
+  submitted: ['Submitted', 'slate', 'send'],
+  review: ['Under review', 'amber', 'clock'],
+  info: ['More information needed', 'purple', 'alert'],
+  approved: ['Approved', 'green', 'check-circle'],
+  rejected: ['Rejected', 'red', 'x-circle'],
+  withdrawn: ['Withdrawn', 'slate', 'x-circle'],
+};
+
+const API_STATUS = {
+  SUBMITTED: 'submitted',
+  UNDER_REVIEW: 'review',
+  MORE_INFO_NEEDED: 'info',
+  APPROVED: 'approved',
+  REJECTED: 'rejected',
+  WITHDRAWN: 'withdrawn',
+};
+
 export const uiStatus = (s) => API_STATUS[s] ?? null;
 export const statusLabel = (s) => STATUS[uiStatus(s)]?.[0] ?? humanize(s);
 export const TERMINAL = ['APPROVED', 'REJECTED', 'WITHDRAWN'];
 
 const APPT_STATUS = {
-  BOOKED: ['Booked', 'green', 'calendar'], CHECKED_IN: ['Checked in', 'amber', 'clock'], COMPLETED: ['Completed', 'slate', 'check-circle'],
-  CANCELLED: ['Cancelled', 'red', 'x-circle'], NO_SHOW: ['No-show', 'red', 'alert'],
+  BOOKED: ['Booked', 'green', 'calendar'],
+  CHECKED_IN: ['Checked in', 'amber', 'clock'],
+  COMPLETED: ['Completed', 'slate', 'check-circle'],
+  CANCELLED: ['Cancelled', 'red', 'x-circle'],
+  NO_SHOW: ['No-show', 'red', 'alert'],
 };
 
-/* ---------- Translations (swap for i18next later; Sesotho to be reviewed by a native speaker) ---------- */
+// Translations
 const T = {
-  en: { hello: 'Hello', home: 'Dashboard', services: 'Services', apps: 'My applications', appts: 'Appointments', notes: 'Notifications', signout: 'Sign out', queue: 'Case queue', overview: 'Overview', users: 'Staff & roles', audit: 'Audit log', access: 'Access rules', lookup: 'Identity lookup', register: 'Register citizen' },
-  st: { hello: 'Lumela', home: 'Letlapa la ka', services: 'Litšebeletso', apps: 'Likopo tsa ka', appts: 'Likopano', notes: 'Litsebiso', signout: 'Tsoa', queue: 'Likopo tse emetseng', overview: 'Kakaretso', users: 'Basebelisi le likarolo', audit: 'Rekoto ea liketso', access: 'Melao ea phihlello' },
+  en: {
+    hello: 'Hello', home: 'Dashboard', services: 'Services', apps: 'My applications',
+    appts: 'Appointments', notes: 'Notifications', signout: 'Sign out',
+    queue: 'Case queue', overview: 'Overview', users: 'Staff & roles',
+    audit: 'Audit log', access: 'Access rules', lookup: 'Identity lookup',
+    register: 'Register citizen', departments: 'Departments',
+  },
+  st: {
+    hello: 'Lumela', home: 'Letlapa la ka', services: 'Litšebeletso',
+    apps: 'Likopo tsa ka', appts: 'Likopano', notes: 'Litsebiso',
+    signout: 'Tsoa', queue: 'Likopo tse emetseng', overview: 'Kakaretso',
+    users: 'Basebelisi le likarolo', audit: 'Rekoto ea liketso',
+    access: 'Melao ea phihlello', departments: 'Mafapha',
+  },
 };
-const NAV = {
-  citizen: [['/app', 'home', 'layout'], ['/app/services', 'services', 'grid'], ['/app/applications', 'apps', 'file'], ['/app/appointments', 'appts', 'calendar'], ['/app/notifications', 'notes', 'bell']],
-  staff: [['/app', 'queue', 'inbox'], ['/app/appointments', 'appts', 'calendar']],
-  officer: [['/app', 'lookup', 'search'], ['/app/register', 'register', 'user-plus']],
-  admin: [['/app', 'overview', 'layout'], ['/app/users', 'users', 'users'], ['/app/audit', 'audit', 'list'], ['/app/access', 'access', 'key']],
-};
-const ROLE_MAP = { CITIZEN: 'citizen', DEPARTMENT_STAFF: 'staff', HOME_AFFAIRS_OFFICER: 'officer', ADMIN: 'admin' };
 
-// Turns the backend's login response into the small user object the pages use.
+const NAV = {
+  citizen: [
+    ['/app', 'home', 'layout'],
+    ['/app/services', 'services', 'grid'],
+    ['/app/applications', 'apps', 'file'],
+    ['/app/appointments', 'appts', 'calendar'],
+    ['/app/notifications', 'notes', 'bell'],
+    ['/app/departments', 'departments', 'building'],
+  ],
+  staff: [
+    ['/app', 'queue', 'inbox'],
+    ['/app/appointments', 'appts', 'calendar'],
+    ['/app/departments', 'departments', 'building'],
+  ],
+  officer: [
+    ['/app', 'lookup', 'search'],
+    ['/app/register', 'register', 'user-plus'],
+    ['/app/departments', 'departments', 'building'],
+  ],
+  admin: [
+    ['/app', 'overview', 'layout'],
+    ['/app/users', 'users', 'users'],
+    ['/app/audit', 'audit', 'list'],
+    ['/app/access', 'access', 'key'],
+    ['/app/departments', 'departments', 'building'],
+  ],
+};
+
+const ROLE_MAP = {
+  CITIZEN: 'citizen',
+  DEPARTMENT_STAFF: 'staff',
+  HOME_AFFAIRS_OFFICER: 'officer',
+  ADMIN: 'admin',
+};
+
 const toUser = (s) => {
   if (!s) return null;
   const role = ROLE_MAP[s.role] ?? 'citizen';
   const u = s.user ?? {};
-  if (role === 'citizen') return { id: u.id, role, firstName: u.firstName ?? '', name: `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() || u.nationalId || 'Citizen', nid: u.nationalId };
-  return { id: u.id, role, name: u.email ?? 'Staff', email: u.email, dept: s.department ?? u.departmentCode ?? null };
+  if (role === 'citizen') {
+    return {
+      id: u.id,
+      role,
+      firstName: u.firstName ?? '',
+      name: `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() || u.nationalId || 'Citizen',
+      nid: u.nationalId,
+    };
+  }
+  return {
+    id: u.id,
+    role,
+    name: u.email ?? 'Staff',
+    email: u.email,
+    dept: s.department ?? u.departmentCode ?? null,
+  };
 };
 
-/* ---------- Global store ---------- */
+// Store
 const Ctx = createContext();
 export const useApp = () => useContext(Ctx);
 
@@ -115,18 +198,31 @@ export function Provider({ children }) {
   }, []);
 
   const endSession = useCallback(() => {
-    setToken(null); saveSession(null); setSession(null);
-    setApps([]); setAppsReady(false); setNotes([]); setDocs([]); setProfile(null);
+    setToken(null);
+    saveSession(null);
+    setSession(null);
+    setApps([]);
+    setAppsReady(false);
+    setNotes([]);
+    setDocs([]);
+    setProfile(null);
   }, []);
+
   useEffect(() => {
-    setOnUnauthorized(() => { endSession(); flash('Your session has expired. Please sign in again.', 'error'); });
+    setOnUnauthorized(() => {
+      endSession();
+      flash('Your session has expired. Please sign in again.', 'error');
+    });
   }, [endSession, flash]);
 
-  // Public catalogue: needed on every screen, even before sign-in.
   useEffect(() => {
     let live = true;
     Promise.all([api.services(), api.departments()])
-      .then(([s, d]) => { if (!live) return; setServices(asList(s).map(normalizeService)); setDepartments(asList(d).map(normalizeDept)); })
+      .then(([s, d]) => {
+        if (!live) return;
+        setServices(asList(s).map(normalizeService));
+        setDepartments(asList(d).map(normalizeDept));
+      })
       .catch((e) => { if (live) flash(e.message, 'error'); })
       .finally(() => { if (live) setCatalogReady(true); });
     return () => { live = false; };
@@ -137,9 +233,18 @@ export function Provider({ children }) {
     catch (e) { flash(e.message, 'error'); }
     finally { setAppsReady(true); }
   }, [flash]);
-  const refreshNotes = useCallback(async () => { try { setNotes(asList(await api.notifications.list())); } catch { /* the page shows its own error */ } }, []);
-  const refreshDocs = useCallback(async () => { try { setDocs(asList(await api.documents.list()).map(normalizeDoc)); } catch { setDocs([]); } }, []);
-  const refreshProfile = useCallback(async () => { try { setProfile(normalizeProfile(await api.me())); } catch { setProfile({}); } }, []);
+
+  const refreshNotes = useCallback(async () => {
+    try { setNotes(asList(await api.notifications.list())); } catch { /* pages show their own error */ }
+  }, []);
+
+  const refreshDocs = useCallback(async () => {
+    try { setDocs(asList(await api.documents.list()).map(normalizeDoc)); } catch { setDocs([]); }
+  }, []);
+
+  const refreshProfile = useCallback(async () => {
+    try { setProfile(normalizeProfile(await api.me())); } catch { setProfile({}); }
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -149,45 +254,110 @@ export function Provider({ children }) {
 
   const begin = (data) => {
     setToken(data.token);
-    const s = { token: data.token, role: data.role, department: data.department ?? null, user: data.user };
-    saveSession(s); setSession(s);
+    const s = {
+      token: data.token,
+      role: data.role,
+      department: data.department ?? null,
+      user: data.user,
+    };
+    saveSession(s);
+    setSession(s);
   };
+
   const login = async (nationalId, code) => begin(await api.auth.verifyOtp(nationalId, code));
   const staffLogin = async (email, password) => begin(await api.auth.staffLogin(email, password));
-  const logout = async () => { try { await api.auth.logout(); } catch { /* token may already be invalid */ } endSession(); };
-  const markAllRead = async () => { try { await api.notifications.markAllRead(); await refreshNotes(); } catch (e) { flash(e.message, 'error'); } };
+
+  const logout = async () => {
+    try { await api.auth.logout(); } catch { /* token may already be invalid */ }
+    endSession();
+  };
+
+  const markAllRead = async () => {
+    try { await api.notifications.markAllRead(); await refreshNotes(); }
+    catch (e) { flash(e.message, 'error'); }
+  };
 
   const t = (k) => T[lang][k] || T.en[k] || k;
   const deptName = (code) => departments.find((d) => d.code === code)?.name ?? humanize(code ?? '');
   const svcByCode = (code) => services.find((s) => s.code === code);
 
   const v = {
-    user, lang, setLang, textScale, setTextScale, services, departments, catalogReady, apps, appsReady, notes, docs, profile, toast,
-    t, deptName, svcByCode, login, staffLogin, logout, flash, markAllRead, refreshApps, refreshNotes, refreshDocs,
+    user, lang, setLang, textScale, setTextScale,
+    services, departments, catalogReady,
+    apps, appsReady, notes, docs, profile, toast,
+    t, deptName, svcByCode,
+    login, staffLogin, logout, flash, markAllRead,
+    refreshApps, refreshNotes, refreshDocs,
   };
   return <Ctx.Provider value={v}>{children}</Ctx.Provider>;
 }
 
-/* ---------- Shared UI kit ---------- */
-export const Badge = ({ s }) => { const [l, c, i] = STATUS[uiStatus(s)] ?? [humanize(s), 'slate', 'dot']; return <span className={'badge ' + c}><Icon name={i} size={13} /> {l}</span>; };
-export const ApptBadge = ({ s }) => { const [l, c, i] = APPT_STATUS[s] ?? [humanize(s), 'slate', 'dot']; return <span className={'badge ' + c}><Icon name={i} size={13} /> {l}</span>; };
+// Shared UI kit
+export const Badge = ({ s }) => {
+  const [l, c, i] = STATUS[uiStatus(s)] ?? [humanize(s), 'slate', 'dot'];
+  return <span className={'badge ' + c}><Icon name={i} size={13} /> {l}</span>;
+};
+
+export const ApptBadge = ({ s }) => {
+  const [l, c, i] = APPT_STATUS[s] ?? [humanize(s), 'slate', 'dot'];
+  return <span className={'badge ' + c}><Icon name={i} size={13} /> {l}</span>;
+};
+
 export const DocBadge = ({ d }) => {
   const rejected = /reject/i.test(d.decision ?? '');
   const verified = !rejected && (d.verifiedAt || /^verif/i.test(d.decision ?? ''));
-  const [l, c, i] = rejected ? ['Rejected', 'red', 'x'] : verified ? ['Verified', 'green', 'check'] : ['Awaiting review', 'slate', 'clock'];
+  const [l, c, i] = rejected ? ['Rejected', 'red', 'x']
+    : verified ? ['Verified', 'green', 'check']
+      : ['Awaiting review', 'slate', 'clock'];
   return <span className={'badge ' + c}><Icon name={i} size={13} /> {l}</span>;
 };
-export const Card = ({ title, action, children }) => (<section className="card">{title && <div className="card-h"><h2>{title}</h2>{action}</div>}<div className="card-b">{children}</div></section>);
-export const Field = ({ label, hint, error, children }) => (<div className="field"><label>{label}{children}</label>{hint && <small>{hint}</small>}{error && <p className="err" role="alert">{error}</p>}</div>);
-export const Steps = ({ items, at }) => (<ol className="steps" aria-label="Progress">{items.map((x, i) => (<li key={x} className={i < at ? 'done' : i === at ? 'now' : ''} aria-current={i === at ? 'step' : undefined}><span>{i < at ? <Icon name="check" size={16} /> : i + 1}</span>{x}</li>))}</ol>);
-export const Page = ({ title, sub, children }) => (<><h1>{title}</h1>{sub && <p className="muted">{sub}</p>}{children}</>);
-export const Loading = ({ text = 'Loading…' }) => (<p className="loading" role="status"><Icon name="loader" size={18} className="spin" />{text}</p>);
 
-/* ---------- App shell (header + role-based sidebar) ---------- */
+export const Card = ({ title, action, children }) => (
+  <section className="card">
+    {title && <div className="card-h"><h2>{title}</h2>{action}</div>}
+    <div className="card-b">{children}</div>
+  </section>
+);
+
+export const Field = ({ label, hint, error, children }) => (
+  <div className="field">
+    <label>{label}{children}</label>
+    {hint && <small>{hint}</small>}
+    {error && <p className="err" role="alert">{error}</p>}
+  </div>
+);
+
+export const Steps = ({ items, at }) => (
+  <ol className="steps" aria-label="Progress">
+    {items.map((x, i) => (
+      <li key={x} className={i < at ? 'done' : i === at ? 'now' : ''}
+        aria-current={i === at ? 'step' : undefined}>
+        <span>{i < at ? <Icon name="check" size={16} /> : i + 1}</span>{x}
+      </li>
+    ))}
+  </ol>
+);
+
+export const Page = ({ title, sub, children }) => (
+  <><h1>{title}</h1>{sub && <p className="muted">{sub}</p>}{children}</>
+);
+
+export const Loading = ({ text = 'Loading…' }) => (
+  <p className="loading" role="status">
+    <Icon name="loader" size={18} className="spin" />{text}
+  </p>
+);
+
+// App shell
 export function Shell() {
   const { user, logout, t, lang, setLang, textScale, setTextScale, notes, toast, deptName } = useApp();
   const unread = notes.filter((n) => !n.readAt).length;
-  const roleLabel = { citizen: 'Citizen', officer: 'Home Affairs officer', admin: 'Administrator', staff: deptName(user.dept) }[user.role];
+  const roleLabel = {
+    citizen: 'Citizen',
+    officer: 'Home Affairs officer',
+    admin: 'Administrator',
+    staff: deptName(user.dept),
+  }[user.role];
   const adjustTextScale = (delta) => setTextScale((scale) => Math.min(1, Math.max(-1, scale + delta)));
 
   return (
@@ -204,11 +374,16 @@ export function Shell() {
             <button className="btn ghost light access-btn" type="button" onClick={() => adjustTextScale(1)} aria-label="Increase text size" title="Increase text size"><Icon name="a-up" size={20} /></button>
           </div>
           <div className="nav-section language">
-            <button className="btn ghost light" type="button" onClick={() => setLang(lang === 'en' ? 'st' : 'en')} aria-label="Change language"><Icon name="globe" size={17} />{lang === 'en' ? 'Sesotho' : 'English'}</button>
+            <button className="btn ghost light" type="button" onClick={() => setLang(lang === 'en' ? 'st' : 'en')} aria-label="Change language">
+              <Icon name="globe" size={17} />{lang === 'en' ? 'Sesotho' : 'English'}
+            </button>
           </div>
           {user.role === 'citizen' && (
             <div className="nav-section notice">
-              <span className="notice-indicator"><Icon name="bell" size={15} />{unread} new{unread > 0 && <span className="notice-dot" aria-hidden="true"></span>}</span>
+              <span className="notice-indicator">
+                <Icon name="bell" size={15} />{unread} new
+                {unread > 0 && <span className="notice-dot" aria-hidden="true"></span>}
+              </span>
             </div>
           )}
           <div className="nav-section profile">
@@ -221,15 +396,28 @@ export function Shell() {
             </div>
           </div>
           <div className="nav-section signout">
-            <button className="btn ghost light signout-btn" type="button" onClick={logout}><Icon name="log-out" size={16} />{t('signout')}</button>
+            <button className="btn ghost light signout-btn" type="button" onClick={logout}>
+              <Icon name="log-out" size={16} />{t('signout')}
+            </button>
           </div>
         </div>
       </header>
       <div className="body">
-        <nav className="side" aria-label="Main">{NAV[user.role].map(([to, k, ic]) => <NavLink key={to} to={to} end={to === '/app'}><Icon name={ic} size={18} />{t(k)}</NavLink>)}</nav>
+        <nav className="side" aria-label="Main">
+          {NAV[user.role].map(([to, k, ic]) => (
+            <NavLink key={to} to={to} end={to === '/app'}>
+              <Icon name={ic} size={18} />{t(k)}
+            </NavLink>
+          ))}
+        </nav>
         <main id="main" tabIndex="-1"><Outlet /></main>
       </div>
-      {toast && <div className={'toast' + (toast.kind === 'error' ? ' error' : '')} role={toast.kind === 'error' ? 'alert' : 'status'}><Icon name={toast.kind === 'error' ? 'alert' : 'check-circle'} size={18} />{toast.msg}</div>}
+      {toast && (
+        <div className={'toast' + (toast.kind === 'error' ? ' error' : '')}
+          role={toast.kind === 'error' ? 'alert' : 'status'}>
+          <Icon name={toast.kind === 'error' ? 'alert' : 'check-circle'} size={18} />{toast.msg}
+        </div>
+      )}
     </div>
   );
 }

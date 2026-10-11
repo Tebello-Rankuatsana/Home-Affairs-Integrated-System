@@ -1,11 +1,11 @@
-// OFFICER MODULE: Home Affairs identity lookup and citizen registration.
-// Both flows hit the backend directly; every lookup is audited server-side.
+// Home Affairs officer pages. Lookup queries the identity register and every
+// call is audited server side. Register creates the citizen record that all
+// other departments verify against.
+
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp, Card, Field, Page, Icon, Loading, FIELD_LABELS } from '../core.jsx';
 import { api } from '../api.js';
-
-/* ---------- Identity lookup ---------- */
 
 export function Lookup() {
   const { flash } = useApp();
@@ -31,21 +31,13 @@ export function Lookup() {
   const reset = () => { setNid(''); setResult(null); setErr(''); };
 
   return (
-    <Page
-      title="Identity lookup"
-      sub="Look up a citizen in the Home Affairs register. Every lookup is recorded in the audit log."
-    >
+    <Page title="Identity lookup"
+      sub="Look up a citizen in the Home Affairs register. Every lookup is recorded in the audit log.">
       <Card title="Find a citizen">
         <form onSubmit={search} noValidate>
-          <Field label="National ID number" hint="e.g. 1990010100001" error={err}>
-            <input
-              className="input"
-              value={nid}
-              onChange={(e) => setNid(e.target.value)}
-              inputMode="text"
-              autoComplete="off"
-              autoFocus
-            />
+          <Field label="National ID number" hint="For example 1990010100001" error={err}>
+            <input className="input" value={nid} onChange={(e) => setNid(e.target.value)}
+              inputMode="text" autoComplete="off" autoFocus />
           </Field>
           <div className="actions">
             <button className="btn primary" type="submit" disabled={busy || !nid.trim()}>
@@ -60,10 +52,8 @@ export function Lookup() {
       {busy && !result && <Card><Loading /></Card>}
 
       {result && (
-        <Card
-          title="Verified record"
-          action={<span className="badge green"><Icon name="check-circle" size={13} /> Verified</span>}
-        >
+        <Card title="Verified record"
+          action={<span className="badge green"><Icon name="check-circle" size={13} /> Verified</span>}>
           <dl className="kv">
             {Object.entries(FIELD_LABELS).map(([k, label]) => {
               const v = k === 'nationalId' ? result.nationalId : result.data?.[k];
@@ -77,8 +67,8 @@ export function Lookup() {
           </dl>
           <p className="muted">
             <small>
-              Source: {result.source} ·{' '}
-              {result.cache === 'hit' ? 'Cached copy' : 'Fresh lookup'} · this request has been logged.
+              Source: {result.source} · {result.cache === 'hit' ? 'Cached copy' : 'Fresh lookup'}
+              {' '}· this request has been logged.
             </small>
           </p>
         </Card>
@@ -86,8 +76,6 @@ export function Lookup() {
     </Page>
   );
 }
-
-/* ---------- Register a citizen ---------- */
 
 const EMPTY = {
   nationalId: '', fullName: '', dateOfBirth: '', gender: 'M',
@@ -108,13 +96,13 @@ export function Register() {
     setErr(''); setBusy(true);
     try {
       const body = {
-        nationalId:  form.nationalId.trim(),
-        fullName:    form.fullName.trim(),
+        nationalId: form.nationalId.trim(),
+        fullName: form.fullName.trim(),
         dateOfBirth: form.dateOfBirth,
-        gender:      form.gender || undefined,
+        gender: form.gender || undefined,
         citizenship: form.citizenship.trim(),
-        address:     form.address.trim(),
-        phone:       form.phone.trim(),
+        address: form.address.trim(),
+        phone: form.phone.trim(),
         ...(form.email.trim() ? { email: form.email.trim() } : {}),
       };
       const r = await api.citizens.create(body);
@@ -131,10 +119,8 @@ export function Register() {
   };
 
   return (
-    <Page
-      title="Register a citizen"
-      sub="Creates the identity record in Home Affairs. The citizen can then sign in with this national ID and a one-time code."
-    >
+    <Page title="Register a citizen"
+      sub="Creates the identity record in Home Affairs. The citizen can then sign in with this national ID and a one-time code.">
       {created && (
         <p className="callout ok">
           <Icon name="check-circle" size={20} />

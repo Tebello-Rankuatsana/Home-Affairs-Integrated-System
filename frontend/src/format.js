@@ -1,4 +1,3 @@
-// src/format.js
 // Presentation helpers. Kept dependency-free.
 
 export const humanize = (s) => String(s ?? '')
@@ -27,8 +26,6 @@ export const fmtDateTime = (v) => (v ? `${fmtDate(v)} ${fmtTime(v)}` : '');
 
 export const todayISO = () => fmtDate(new Date());
 
-// Currency comes from the service; backend uses LSL. Callers may pass a currency
-// code, or omit it and get the 'M' abbreviation used elsewhere in the UI.
 export const money = (n, currency = 'M') => {
   const v = Number(n);
   if (!Number.isFinite(v)) return '';
