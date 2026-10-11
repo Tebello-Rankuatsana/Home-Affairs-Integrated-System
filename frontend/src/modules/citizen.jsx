@@ -1,34 +1,42 @@
-// CITIZEN MODULE: dashboard, service catalogue, apply wizard, tracking, appointments, notifications.
-import { useState } from 'react';
+// CITIZEN MODULE: dashboard, service catalogue, apply wizard (documents + payment), tracking, appointments, notifications.
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useApp, Card, Badge, Field, Steps, Page, Icon, SERVICES, DEPTS, FIELDS, ACCESS, STATUS, svcOf } from '../core.jsx';
+import { useApp, Card, Badge, ApptBadge, DocBadge, Field, Steps, Page, Loading, Icon, FIELD_LABELS, TERMINAL, uiStatus, statusLabel } from '../core.jsx';
+import { api, asList, normalizeAppt, normalizeDoc, PAYMENT_METHODS } from '../api.js';
+import { fmtDate, fmtDateTime, fmtTime, humanize, money, todayISO } from '../format.js';
 
-const mine = (apps, u) => apps.filter((a) => a.citizen.nid === u.nid);
-const PROGRESS = { submitted: 25, review: 60, info: 50, approved: 100, rejected: 100 };
+const PROGRESS = { submitted: 25, review: 60, info: 50, approved: 100, rejected: 100, withdrawn: 100 };
+const progressOf = (status) => PROGRESS[uiStatus(status)] ?? 25;
+const FILE_TYPES = '.pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png';
 
 export function CitizenHome() {
-  const { user, t, apps, appts, notes } = useApp();
-  const my = mine(apps, user);
-  const next = appts.find((a) => a.nid === user.nid);
+  const { user, t, apps, appsReady, notes, svcByCode, deptName } = useApp();
+  const [appts, setAppts] = useState(null);
+  useEffect(() => { api.appointments.list().then((r) => setAppts(asList(r).map(normalizeAppt))).catch(() => setAppts([])); }, []);
+  const next = (appts ?? []).find((a) => a.status === 'BOOKED' && new Date(a.startsAt) > new Date());
   return (
-    <Page title={`${t('hello')}, ${user.name.split(' ')[0]}`} sub="Here is where your applications and appointments stand today.">
+    <Page title={`${t('hello')}, ${user.firstName || user.name}`} sub="Here is where your applications and appointments stand today.">
       <p className="callout ok"><Icon name="shield-check" size={20} />Your identity is verified by Home Affairs. Departments request only the details they need and every request is recorded.</p>
       <div className="grid3">
-        <div className="stat"><b>{my.filter((a) => !['approved', 'rejected'].includes(a.status)).length}</b>Active applications</div>
-        <div className="stat"><b>{my.filter((a) => a.status === 'info').length}</b>Need your action</div>
-        <div className="stat"><b>{notes.filter((n) => !n.read).length}</b>Unread notifications</div>
+        <div className="stat"><b>{apps.filter((a) => !TERMINAL.includes(a.status)).length}</b>Active applications</div>
+        <div className="stat"><b>{apps.filter((a) => a.status === 'MORE_INFO_NEEDED').length}</b>Need your action</div>
+        <div className="stat"><b>{notes.filter((n) => !n.readAt).length}</b>Unread notifications</div>
       </div>
       <div className="grid2">
         <Card title="My applications" action={<Link to="/app/applications">View all</Link>}>
-          {my.slice(0, 3).map((a) => (
-            <Link key={a.id} to={`/app/applications/${a.id}`} className="row">
-              <div><b>{svcOf(a.svc).name}</b><small>{a.id} · {DEPTS[svcOf(a.svc).dept]}</small><progress value={PROGRESS[a.status]} max="100" aria-label="Progress" /></div><Badge s={a.status} />
-            </Link>
-          ))}
-          {!my.length && <p className="muted">No applications yet. <Link to="/app/services">Start one</Link>.</p>}
+          {!appsReady ? <Loading /> : <>
+            {apps.slice(0, 3).map((a) => (
+              <Link key={a.id} to={`/app/applications/${a.id}`} className="row">
+                <div><b>{a.service?.name}</b><small>{a.reference} · {deptName(svcByCode(a.service?.code)?.dept)}</small><progress value={progressOf(a.status)} max="100" aria-label="Progress" /></div><Badge s={a.status} />
+              </Link>
+            ))}
+            {!apps.length && <p className="muted">No applications yet. <Link to="/app/services">Start one</Link>.</p>}
+          </>}
         </Card>
         <Card title="Next appointment" action={<Link to="/app/appointments">Manage</Link>}>
-          {next ? <p><b>{svcOf(next.svc).name}</b><br />{next.branch} · {next.date} at {next.slot}<br /><small className="muted">Bring your ID. No documents are needed that you already uploaded.</small></p> : <p className="muted">No upcoming appointments.</p>}
+          {appts === null ? <Loading /> : next
+            ? <p><b>{next.service ?? next.deptName}</b><br />{next.deptName} · {fmtDateTime(next.startsAt)}<br /><small className="muted">Bring your ID. No documents are needed that you already uploaded.</small></p>
+            : <p className="muted">No upcoming appointments.</p>}
         </Card>
       </div>
     </Page>
@@ -36,61 +44,118 @@ export function CitizenHome() {
 }
 
 export function Services() {
+  const { services, departments, catalogReady, deptName } = useApp();
   const [q, setQ] = useState('');
   const [d, setD] = useState('');
-  const list = SERVICES.filter((s) => s.name.toLowerCase().includes(q.toLowerCase()) && (!d || s.dept === d));
+  const list = services.filter((s) => (s.name ?? '').toLowerCase().includes(q.toLowerCase()) && (!d || s.dept === d));
   return (
     <Page title="Government services" sub="Find a service from any department in one place.">
       <div className="filters">
         <input className="input" placeholder="Search services, e.g. passport" aria-label="Search services" value={q} onChange={(e) => setQ(e.target.value)} />
-        <select className="input" aria-label="Department" value={d} onChange={(e) => setD(e.target.value)}><option value="">All departments</option>{Object.entries(DEPTS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+        <select className="input" aria-label="Department" value={d} onChange={(e) => setD(e.target.value)}><option value="">All departments</option>{departments.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}</select>
       </div>
-      <div className="grid3">
-        {list.map((s) => (
-          <Card key={s.id}><h3>{s.name}</h3><p className="muted">{DEPTS[s.dept]}</p><p><small>Fee: {s.fee ? 'M' + s.fee : 'Free'} · About {s.days} working days</small></p><Link className="btn primary" to={`/app/apply/${s.id}`}>Apply online</Link></Card>
-        ))}
-      </div>
-      {!list.length && <p>No services match your search. Try a shorter word or clear the department filter.</p>}
+      {!catalogReady ? <Loading /> : <>
+        <div className="grid3">
+          {list.map((s) => (
+            <Card key={s.code}><h3>{s.name}</h3><p className="muted">{deptName(s.dept)}</p><p><small>Fee: {s.fee ? money(s.fee) : 'Free'}{s.days ? ` · About ${s.days} working days` : ''}</small></p><Link className="btn primary" to={`/app/apply/${s.code}`}>Apply online</Link></Card>
+          ))}
+        </div>
+        {!list.length && <p>No services match your search. Try a shorter word or clear the department filter.</p>}
+      </>}
     </Page>
   );
 }
 
 export function Apply() {
   const { id } = useParams();
-  const svc = svcOf(id);
-  const { user, submit } = useApp();
+  const { svcByCode, deptName, catalogReady, profile, docs, refreshApps, refreshNotes, refreshDocs } = useApp();
+  const svc = svcByCode(id);
   const nav = useNavigate();
   const [at, setAt] = useState(0);
   const [consent, setConsent] = useState(false);
-  const [up, setUp] = useState({});
-  const [ref, setRef] = useState('');
-  if (!svc) return <p>Service not found.</p>;
-  const has = (d) => user.onFile.includes(d) || up[d];
-  const docsOk = svc.docs.every(has);
+  const [up, setUp] = useState({}); // documents uploaded during this application, by type
+  const [busy, setBusy] = useState(''); // '' | 'upload:<type>' | 'submit'
+  const [err, setErr] = useState('');
+  const [method, setMethod] = useState(PAYMENT_METHODS[0][0]);
+  const [result, setResult] = useState(null);
+  const [payErr, setPayErr] = useState('');
+  if (!catalogReady) return <Loading />;
+  if (!svc) return <p>Service not found. <Link to="/app/services">Back to services</Link></p>;
+
+  const onFile = (type) => docs.find((d) => d.type === type);
+  const chosen = (type) => up[type] ?? onFile(type);
+  const docsOk = svc.docs.every((type) => chosen(type));
+  const rows = profile ? Object.entries(FIELD_LABELS).filter(([k]) => profile[k]) : null;
+
+  const upload = async (type, file) => {
+    if (!file) return;
+    setBusy('upload:' + type); setErr('');
+    try {
+      const d = normalizeDoc(await api.documents.upload(file, type));
+      setUp((u) => ({ ...u, [type]: { ...d, name: d.name || file.name } }));
+      refreshDocs();
+    } catch (e) { setErr(e.message); } finally { setBusy(''); }
+  };
+
+  const submit = async () => {
+    setBusy('submit'); setErr(''); setPayErr('');
+    try {
+      const created = await api.applications.submit({ serviceCode: svc.code, formData: {}, documentIds: svc.docs.map((type) => chosen(type).id) });
+      setResult(created);
+      if (svc.fee) { try { await api.applications.pay(created.id, method); } catch (e) { setPayErr(e.message); } }
+      refreshApps(); refreshNotes();
+      setAt(3);
+    } catch (e) { setErr(e.message); } finally { setBusy(''); }
+  };
+
   return (
-    <Page title={svc.name} sub={`Handled by ${DEPTS[svc.dept]}`}>
+    <Page title={svc.name} sub={`Handled by ${deptName(svc.dept)}`}>
       <Steps items={['Your details', 'Documents', 'Review & pay', 'Done']} at={at} />
       <Card>
         {at === 0 && (<>
           <h3>We already have your details</h3>
-          <p className="muted">Home Affairs will share only these details with {DEPTS[svc.dept]}. You do not need to type them again.</p>
-          <dl className="kv">{ACCESS[svc.dept].map((k) => <div key={k}><dt>{FIELDS[k]}</dt><dd>{user[k]}</dd></div>)}</dl>
-          <label className="check"><input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} /> I agree that Home Affairs may share these details with {DEPTS[svc.dept]} for this application.</label>
+          <p className="muted">Home Affairs holds your verified identity. It will share only the details {deptName(svc.dept)} is authorised to receive. You do not need to type them again.</p>
+          {rows === null ? <Loading /> : rows.length ? <dl className="kv">{rows.map(([k, l]) => <div key={k}><dt>{l}</dt><dd>{profile[k]}</dd></div>)}</dl> : <p className="muted">Your verified details will be shared by Home Affairs.</p>}
+          <label className="check"><input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} /> I agree that Home Affairs may share the details this department is authorised to receive with {deptName(svc.dept)} for this application.</label>
         </>)}
         {at === 1 && (<>
           <h3>Supporting documents</h3>
-          {svc.docs.map((d) => (
-            <div className="row" key={d}><div><b>{d}</b>{user.onFile.includes(d) ? <small className="ok-text"><Icon name="check" size={14} />Already on file. We will reuse it.</small> : up[d] ? <small className="ok-text"><Icon name="check" size={14} />Uploaded</small> : <small>Required: PDF, JPG or PNG, up to 5 MB</small>}</div>
-              {!user.onFile.includes(d) && <button className="btn" onClick={() => setUp({ ...up, [d]: true })}><Icon name="upload" size={16} />{up[d] ? 'Replace' : 'Upload'}</button>}</div>
-          ))}
+          {!svc.docs.length && <p className="muted">No documents are required for this service.</p>}
+          {svc.docs.map((type) => {
+            const c = chosen(type);
+            const isUp = busy === 'upload:' + type;
+            return (
+              <div className="row" key={type}>
+                <div><b>{humanize(type)}</b>
+                  {c ? <small className="ok-text"><Icon name="check" size={14} />{up[type] ? `Uploaded: ${c.name}` : 'Already on file. We will reuse it.'}</small> : <small>Required: PDF, JPG or PNG</small>}</div>
+                {(!onFile(type) || up[type]) && (
+                  <label className="btn file-btn"><Icon name={isUp ? 'loader' : 'upload'} size={16} className={isUp ? 'spin' : ''} />{c ? 'Replace' : 'Upload'}
+                    <input type="file" accept={FILE_TYPES} disabled={!!busy} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; upload(type, f); }} /></label>
+                )}
+              </div>
+            );
+          })}
           {!docsOk && <p className="callout warn"><Icon name="alert" size={20} />Please upload every required document to continue.</p>}
+          {err && <p className="err" role="alert">{err}</p>}
         </>)}
-        {at === 2 && (<><h3>Review your application</h3><dl className="kv"><div><dt>Service</dt><dd>{svc.name}</dd></div><div><dt>Department</dt><dd>{DEPTS[svc.dept]}</dd></div><div><dt>Documents</dt><dd>{svc.docs.length} attached</dd></div><div><dt>Fee</dt><dd>{svc.fee ? 'M' + svc.fee + ' (pay at submission)' : 'Free'}</dd></div></dl></>)}
-        {at === 3 && (<><h3 className="success-title"><Icon name="check-circle" size={26} />Application submitted</h3><p>Your reference number is <b>{ref}</b>. A digital receipt has been added to your notifications.</p><div className="actions"><Link className="btn primary" to={`/app/applications/${ref}`}>Track this application</Link><Link className="btn" to="/app/appointments">Book an appointment</Link></div></>)}
+        {at === 2 && (<>
+          <h3>Review your application</h3>
+          <dl className="kv"><div><dt>Service</dt><dd>{svc.name}</dd></div><div><dt>Department</dt><dd>{deptName(svc.dept)}</dd></div><div><dt>Documents</dt><dd>{svc.docs.length} attached</dd></div><div><dt>Fee</dt><dd>{svc.fee ? money(svc.fee) + ' (pay at submission)' : 'Free'}</dd></div></dl>
+          {svc.fee > 0 && <Field label="Payment method"><select className="input" value={method} onChange={(e) => setMethod(e.target.value)}>{PAYMENT_METHODS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>}
+          {err && <p className="err" role="alert">{err}</p>}
+        </>)}
+        {at === 3 && (<>
+          <h3 className="success-title"><Icon name="check-circle" size={26} />Application submitted</h3>
+          <p>Your reference number is <b>{result?.reference}</b>. A digital receipt has been added to your notifications.</p>
+          {payErr && <p className="callout warn"><Icon name="alert" size={20} />Your application was submitted, but the payment did not go through: {payErr} You can pay from the application page.</p>}
+          <div className="actions"><Link className="btn primary" to={`/app/applications/${result?.id}`}>Track this application</Link><Link className="btn" to="/app/appointments">Book an appointment</Link></div>
+        </>)}
         {at < 3 && (
           <div className="actions">
-            {at > 0 ? <button className="btn" onClick={() => setAt(at - 1)}>Back</button> : <button className="btn" onClick={() => nav('/app/services')}>Cancel</button>}
-            <button className="btn primary" disabled={(at === 0 && !consent) || (at === 1 && !docsOk)} onClick={() => (at === 2 ? (setRef(submit(svc)), setAt(3)) : setAt(at + 1))}>{at === 2 ? (svc.fee ? 'Pay M' + svc.fee + ' and submit' : 'Submit') : 'Continue'}</button>
+            {at > 0 ? <button className="btn" disabled={!!busy} onClick={() => { setErr(''); setAt(at - 1); }}>Back</button> : <button className="btn" onClick={() => nav('/app/services')}>Cancel</button>}
+            <button className="btn primary" disabled={!!busy || (at === 0 && !consent) || (at === 1 && !docsOk)} onClick={() => (at === 2 ? submit() : (setErr(''), setAt(at + 1)))}>
+              {busy === 'submit' && <Icon name="loader" size={16} className="spin" />}{at === 2 ? (svc.fee ? 'Pay ' + money(svc.fee) + ' and submit' : 'Submit') : 'Continue'}
+            </button>
           </div>
         )}
       </Card>
@@ -99,12 +164,15 @@ export function Apply() {
 }
 
 export function Applications() {
-  const { user, apps } = useApp();
+  const { apps, appsReady } = useApp();
   return (
     <Page title="My applications">
       <Card>
-        <table className="table"><thead><tr><th>Reference</th><th>Service</th><th>Submitted</th><th>Status</th></tr></thead>
-          <tbody>{mine(apps, user).map((a) => <tr key={a.id}><td><Link to={`/app/applications/${a.id}`}>{a.id}</Link></td><td>{svcOf(a.svc).name}</td><td>{a.date}</td><td><Badge s={a.status} /></td></tr>)}</tbody></table>
+        {!appsReady ? <Loading /> : (
+          <table className="table"><thead><tr><th>Reference</th><th>Service</th><th>Submitted</th><th>Status</th></tr></thead>
+            <tbody>{apps.map((a) => <tr key={a.id}><td><Link to={`/app/applications/${a.id}`}>{a.reference}</Link></td><td>{a.service?.name}</td><td>{fmtDate(a.createdAt)}</td><td><Badge s={a.status} /></td></tr>)}
+              {!apps.length && <tr><td colSpan="4" className="muted">No applications yet.</td></tr>}</tbody></table>
+        )}
       </Card>
     </Page>
   );
@@ -112,44 +180,154 @@ export function Applications() {
 
 export function ApplicationDetail() {
   const { id } = useParams();
-  const { apps, respond } = useApp();
-  const a = apps.find((x) => x.id === id);
-  if (!a) return <p>Application not found. <Link to="/app/applications">Back to my applications</Link></p>;
-  const s = svcOf(a.svc);
+  const { svcByCode, deptName, refreshApps, refreshNotes, flash } = useApp();
+  const [a, setA] = useState(null);
+  const [state, setState] = useState('loading'); // 'loading' | 'ok' | 'missing'
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [note, setNote] = useState('');
+  const [file, setFile] = useState(null);
+  const [docType, setDocType] = useState('');
+  const [method, setMethod] = useState(PAYMENT_METHODS[0][0]);
+
+  const load = useCallback(async () => {
+    try { setA(await api.applications.get(id)); setState('ok'); } catch { setState('missing'); }
+  }, [id]);
+  useEffect(() => { load(); }, [load]);
+
+  if (state === 'loading') return <Loading />;
+  if (state === 'missing' || !a) return <p>Application not found. <Link to="/app/applications">Back to my applications</Link></p>;
+
+  const svc = svcByCode(a.service?.code);
+  const open = !TERMINAL.includes(a.status);
+  const needsPay = open && a.paymentStatus === 'UNPAID' && svc?.fee > 0;
+  const askTypes = a.missingDocuments?.length ? a.missingDocuments : svc?.docs ?? [];
+  const type = docType || askTypes[0] || '';
+  const ask = [...(a.history ?? [])].reverse().find((h) => h.toStatus === 'MORE_INFO_NEEDED')?.note;
+
+  const run = async (fn, okMsg) => {
+    setBusy(true); setErr('');
+    try { await fn(); flash(okMsg); await load(); refreshApps(); refreshNotes(); }
+    catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+  const respond = (e) => {
+    e.preventDefault();
+    if (!file && !note.trim()) return setErr('Add a document or a short note so the department can continue.');
+    return run(async () => {
+      if (file) { const d = normalizeDoc(await api.documents.upload(file, type)); await api.applications.attachDocument(a.id, d.id); }
+      await api.applications.respond(a.id, { formData: {}, note: note.trim() });
+      setFile(null); setNote('');
+    }, 'Thank you. Your application is back under review.');
+  };
+  const pay = () => run(() => api.applications.pay(a.id, method), 'Payment received. Your receipt is in your notifications.');
+  const withdraw = () => { if (window.confirm('Withdraw this application? This cannot be undone.')) run(() => api.applications.withdraw(a.id), 'Application withdrawn'); };
+
   return (
-    <Page title={s.name} sub={`${a.id} · ${DEPTS[s.dept]}`}>
+    <Page title={a.service?.name} sub={`${a.reference} · ${a.department?.name ?? deptName(svc?.dept)}`}>
       <p><Badge s={a.status} /></p>
-      {a.missing.length > 0 && (
-        <div className="callout warn"><Icon name="alert" size={22} /><div><b>What you need to do next</b><ul>{a.missing.map((m) => <li key={m}>{m}</li>)}</ul></div><button className="btn primary" onClick={() => respond(a.id)}><Icon name="upload" size={16} />Upload and resubmit</button></div>
+      {err && <p className="callout err" role="alert"><Icon name="alert" size={20} />{err}</p>}
+      {a.status === 'MORE_INFO_NEEDED' && (<>
+        <div className="callout warn"><Icon name="alert" size={22} /><div><b>What you need to do next</b>
+          {ask && <p style={{ margin: '6px 0 0' }}>{ask}</p>}
+          {a.missingDocuments?.length > 0 && <ul>{a.missingDocuments.map((m) => <li key={m}>Upload: {humanize(m)}</li>)}</ul>}</div></div>
+        <Card title="Reply to the department">
+          <form onSubmit={respond} noValidate>
+            {askTypes.length > 0 && <Field label="Document type"><select className="input" value={type} onChange={(e) => setDocType(e.target.value)}>{askTypes.map((x) => <option key={x} value={x}>{humanize(x)}</option>)}</select></Field>}
+            <div className="field"><span className="lbl">New document (optional)</span>
+              <label className="btn file-btn"><Icon name="upload" size={16} />{file ? file.name : 'Choose a file'}<input type="file" accept={FILE_TYPES} onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></label></div>
+            <Field label="Note (optional)"><textarea className="input" rows="3" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+            <button className="btn primary" type="submit" disabled={busy}><Icon name={busy ? 'loader' : 'upload'} size={16} className={busy ? 'spin' : ''} />Upload and resubmit</button>
+          </form>
+        </Card>
+      </>)}
+      {needsPay && (
+        <div className="callout warn"><Icon name="credit-card" size={22} /><div><b>Fee not paid yet: {money(svc.fee)}</b><small>Your application cannot be completed until the fee is paid.</small></div>
+          <select className="input" aria-label="Payment method" style={{ width: 'auto', margin: 0 }} value={method} onChange={(e) => setMethod(e.target.value)}>{PAYMENT_METHODS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+          <button className="btn primary" disabled={busy} onClick={pay}><Icon name="credit-card" size={16} />Pay now</button></div>
       )}
-      {a.status === 'approved' && <p className="callout ok"><Icon name="check-circle" size={20} />Approved. Your digital receipt and proof of service are in your notifications.</p>}
+      {a.status === 'APPROVED' && <p className="callout ok"><Icon name="check-circle" size={20} />Approved. Your digital receipt and proof of service are in your notifications.</p>}
+      {a.documents?.length > 0 && (
+        <Card title="Documents">{a.documents.map((d) => <div className="row" key={d.id}><b>{humanize(d.type)}<small>{d.originalName}</small></b><DocBadge d={d} /></div>)}</Card>
+      )}
       <Card title="Progress history">
-        <ol className="timeline">{[...a.history].reverse().map((h, i) => <li key={i}><b>{STATUS[h.s][0]}</b><small>{h.t} · {h.by}{h.note ? ' · ' + h.note : ''}</small></li>)}</ol>
+        <ol className="timeline">{[...(a.history ?? [])].reverse().map((h, i) => <li key={i}><b>{statusLabel(h.toStatus)}</b><small>{fmtDateTime(h.createdAt)}{h.note ? ' · ' + h.note : ''}</small></li>)}</ol>
       </Card>
+      {open && <div className="actions"><button className="btn" disabled={busy} onClick={withdraw}><Icon name="x-circle" size={16} />Withdraw application</button></div>}
     </Page>
   );
 }
 
 export function Appointments() {
-  const { user, appts, book } = useApp();
-  const [f, setF] = useState({ svc: SERVICES[0].id, branch: 'Maseru', date: '', slot: '09:00' });
+  const { departments, services, flash, refreshNotes } = useApp();
+  const [list, setList] = useState(null);
+  const [dept, setDept] = useState('');
+  const [svcCode, setSvcCode] = useState('');
+  const [date, setDate] = useState('');
+  const [slots, setSlots] = useState(null);
+  const [slot, setSlot] = useState('');
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const go = (e) => { e.preventDefault(); if (!f.date) return setErr('Choose a date for your visit.'); setErr(''); book(f); };
-  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+
+  useEffect(() => { if (!dept && departments.length) setDept(departments[0].code); }, [departments, dept]);
+
+  const loadList = useCallback(() => api.appointments.list()
+    .then((r) => setList(asList(r).map(normalizeAppt)))
+    .catch((e) => { setList([]); flash(e.message, 'error'); }), [flash]);
+  useEffect(() => { loadList(); }, [loadList]);
+
+  const loadSlots = useCallback(async () => {
+    setErr('');
+    if (!dept || !date) { setSlots(null); return; }
+    setSlots(null);
+    try { setSlots((await api.appointments.slots(dept, date)).slots ?? []); } catch (e) { setSlots([]); setErr(e.message); }
+  }, [dept, date]);
+  useEffect(() => { setSlot(''); loadSlots(); }, [loadSlots]);
+
+  const book = async (e) => {
+    e.preventDefault();
+    if (!date) return setErr('Choose a date for your visit.');
+    if (!slot) return setErr('Choose a time for your visit.');
+    setBusy(true); setErr('');
+    try {
+      await api.appointments.book({ departmentCode: dept, serviceCode: svcCode, startsAt: slot });
+      flash('Appointment confirmed');
+      setSlot('');
+      await Promise.all([loadList(), loadSlots()]);
+      refreshNotes();
+    } catch (ex) { setErr(ex.message); } finally { setBusy(false); }
+  };
+  const cancel = async (id) => {
+    if (!window.confirm('Cancel this appointment?')) return;
+    try { await api.appointments.cancel(id); flash('Appointment cancelled'); loadList(); loadSlots(); refreshNotes(); } catch (e) { flash(e.message, 'error'); }
+  };
+
   return (
     <Page title="Appointments" sub="Book a time so you do not have to queue.">
       <div className="grid2">
         <Card title="Book a visit">
-          <form onSubmit={go} noValidate>
-            <Field label="Service"><select className="input" value={f.svc} onChange={set('svc')}>{SERVICES.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
-            <Field label="Service centre"><select className="input" value={f.branch} onChange={set('branch')}>{['Maseru', 'Mafeteng', 'Leribe', 'Mohale’s Hoek', 'Qacha’s Nek'].map((b) => <option key={b}>{b}</option>)}</select></Field>
-            <Field label="Date" error={err}><input className="input" type="date" min="2026-10-04" value={f.date} onChange={set('date')} /></Field>
-            <Field label="Time" hint="Estimated waiting time on arrival: about 10 minutes."><select className="input" value={f.slot} onChange={set('slot')}>{['08:30', '09:00', '09:30', '10:30', '11:30', '14:00'].map((s) => <option key={s}>{s}</option>)}</select></Field>
-            <button className="btn primary" type="submit"><Icon name="calendar" size={16} />Confirm appointment</button>
+          <form onSubmit={book} noValidate>
+            <Field label="Department"><select className="input" value={dept} onChange={(e) => { setDept(e.target.value); setSvcCode(''); }}>{departments.map((d) => <option key={d.code} value={d.code}>{d.name}</option>)}</select></Field>
+            <Field label="Service (optional)"><select className="input" value={svcCode} onChange={(e) => setSvcCode(e.target.value)}><option value="">Any service</option>{services.filter((s) => s.dept === dept).map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}</select></Field>
+            <Field label="Date"><input className="input" type="date" min={todayISO()} value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+            <div className="field" role="group" aria-labelledby="slot-label"><span id="slot-label" className="lbl">Time</span>
+              {!date ? <small>Choose a date to see the free times.</small> : slots === null ? <Loading /> : slots.length === 0 ? <small>No times on this day. Offices are closed at weekends, so try another date.</small> : (
+                <div className="slots">{slots.map((s) => <button type="button" key={s.startsAt} className={'slot' + (slot === s.startsAt ? ' on' : '')} disabled={!s.bookable} aria-pressed={slot === s.startsAt} title={s.bookable ? `${s.available} free` : 'Not available'} onClick={() => setSlot(s.startsAt)}>{fmtTime(s.startsAt)}</button>)}</div>
+              )}
+              {err && <p className="err" role="alert">{err}</p>}
+            </div>
+            <button className="btn primary" type="submit" disabled={busy}><Icon name={busy ? 'loader' : 'calendar'} size={16} className={busy ? 'spin' : ''} />Confirm appointment</button>
           </form>
         </Card>
         <Card title="Your appointments">
-          {appts.filter((a) => a.nid === user.nid).map((a) => <div className="row" key={a.id}><div><b>{svcOf(a.svc).name}</b><small>{a.branch} · {a.date} at {a.slot}</small></div><span className="badge green"><Icon name="check" size={13} /> Confirmed</span></div>)}
+          {list === null ? <Loading /> : <>
+            {list.map((a) => (
+              <div className="row" key={a.id}>
+                <div><b>{a.service ?? a.deptName}</b><small>{a.deptName} · {fmtDateTime(a.startsAt)} · {a.reference}{a.queueNumber ? ` · Queue no. ${a.queueNumber}` : ''}</small></div>
+                <div className="row-actions"><ApptBadge s={a.status} />{a.status === 'BOOKED' && new Date(a.startsAt) > new Date() && <button className="btn sm" onClick={() => cancel(a.id)}><Icon name="x" size={14} />Cancel</button>}</div>
+              </div>
+            ))}
+            {!list.length && <p className="muted">You have no appointments yet.</p>}
+          </>}
         </Card>
       </div>
     </Page>
@@ -157,11 +335,21 @@ export function Appointments() {
 }
 
 export function Notifications() {
-  const { notes, setNotes } = useApp();
+  const { notes, markAllRead, refreshNotes, flash } = useApp();
+  useEffect(() => { refreshNotes(); }, [refreshNotes]);
+  const read = async (id) => { try { await api.notifications.markRead(id); refreshNotes(); } catch (e) { flash(e.message, 'error'); } };
   return (
     <Page title="Notifications" sub="Also sent by SMS and email.">
-      <button className="btn" onClick={() => setNotes(notes.map((n) => ({ ...n, read: true })))}><Icon name="check" size={16} />Mark all as read</button>
-      <Card>{notes.map((n) => <div className="row" key={n.id}><div><b>{n.read ? '' : <><Icon name="dot" size={10} className="new-dot" /> New · </>}{n.msg}</b><small>{n.t}</small></div></div>)}</Card>
+      <button className="btn" onClick={markAllRead}><Icon name="check" size={16} />Mark all as read</button>
+      <Card>
+        {notes.map((n) => (
+          <div className="row" key={n.id}>
+            <div><b>{!n.readAt && <><Icon name="dot" size={10} className="new-dot" /> New · </>}{n.message}</b><small>{fmtDateTime(n.createdAt)}</small></div>
+            {!n.readAt && <button className="btn sm" onClick={() => read(n.id)}>Mark read</button>}
+          </div>
+        ))}
+        {!notes.length && <p className="muted">No notifications yet.</p>}
+      </Card>
     </Page>
   );
 }
