@@ -13,12 +13,11 @@ Express + Prisma + PostgreSQL + Redis (JWT/Passport auth, RBAC, audit log).
 ## Run it
 
 ```bash
-cp .env.example .env
-docker compose up -d          # PostgreSQL + Redis 
+cp .env.example .env 
 npm install
-npx prisma migrate dev --name init
-npm run db:seed
-npm run dev                   # http://localhost:3000
+npx prisma generate
+node prisma/seed.js
+npm start
 ```
 
 Seed logins (password for all staff: `Password123!`):
