@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp, Field, Icon } from '../core.jsx';
+import coatOfArms from '../../images/coat-of-arms-of-lesotho-seeklogo.png';
 
 const DEMO = [['Citizen', 'LS-9004127788'], ['Traffic staff', 'TT-STAFF-01'], ['Passport staff', 'PP-STAFF-01'], ['Administrator', 'ADM-01']];
 const METHODS = { sms: 'SMS code to my phone', email: 'Code to my email', voice: 'Voice call with the code (no reading needed)', bio: 'Fingerprint on my device' };
@@ -30,7 +31,7 @@ export function Login() {
   return (
     <div className="auth">
       <aside>
-        <div className="crest"><Icon name="shield-check" size={30} /></div>
+        <div className="crest"><img src={coatOfArms} alt="Coat of arms of Lesotho" /></div>
         <h1>GovServe Lesotho</h1>
         <p>One verified identity from Home Affairs. Apply once, track every step, and stop repeating the same documents.</p>
         <ul>

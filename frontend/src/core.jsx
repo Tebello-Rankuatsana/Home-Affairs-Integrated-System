@@ -1,6 +1,7 @@
 // CORE: data, translations (EN / Sesotho), global store, shared UI kit and app shell.
 import { createContext, useCallback, useContext, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
+import coatOfArms from '../images/coat-of-arms-of-lesotho-seeklogo.png';
 
 /* ---------- Icons (inline SVG, no extra dependency; stroke follows currentColor) ---------- */
 const ICONS = {
@@ -152,7 +153,7 @@ export function Shell() {
       <a href="#main" className="skip">Skip to main content</a>
       <header className="hdr">
         <div className="brand">
-          <img src="/govserve-logo.svg" alt="GovServe Lesotho" className="brand-logo" />
+          <span className="brand-crest"><img src={coatOfArms} alt="Coat of arms of Lesotho" /></span>
           <div className="brand-copy"><b>GovServe Lesotho</b><small>Integrated Government Services</small></div>
         </div>
         <div className="hdr-r">
