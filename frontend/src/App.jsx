@@ -1,7 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { Provider, Shell, useApp, Loading } from './core.jsx';
+import { Provider, Shell, useApp } from './core.jsx';
 import { Login } from './modules/auth.jsx';
-import { CitizenHome, Services, Apply, Applications, ApplicationDetail, Appointments, Notifications } from './modules/citizen.jsx';
+import { CitizenHome, Services, Apply, Applications, ApplicationDetail, Appointments, Notifications, About } from './modules/citizen.jsx';
 import { Queue, Review, StaffAppointments } from './modules/staff.jsx';
 import { Lookup, Register } from './modules/officer.jsx';
 import { AdminHome, Users, Audit, AccessRules } from './modules/admin.jsx';
@@ -49,6 +49,7 @@ export default function App() {
           <Route path="applications/:id" element={C(<ApplicationDetail />)} />
           <Route path="appointments" element={<Appts />} />
           <Route path="notifications" element={C(<Notifications />)} />
+          <Route path="about" element={C(<About />)} />
           <Route path="review/:id" element={<Only role="staff"><Review /></Only>} />
           <Route path="register" element={<Only role="officer"><Register /></Only>} />
           <Route path="users" element={<Only role="admin"><Users /></Only>} />

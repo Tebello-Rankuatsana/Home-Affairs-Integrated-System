@@ -48,6 +48,7 @@ const ICONS = {
   refresh: <><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></>,
   building: <><rect x="4" y="2" width="16" height="20" rx="2" /><path d="M9 22v-4h6v4" /><path d="M8 6h.01M16 6h.01M8 10h.01M16 10h.01M8 14h.01M16 14h.01" /></>,
   'arrow-left': <><path d="M19 12H5" /><path d="m12 19-7-7 7-7" /></>,
+  info: <><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></>,
 };
 
 export const Icon = ({ name, size = 16, className = '' }) => (
@@ -103,14 +104,14 @@ const T = {
     appts: 'Appointments', notes: 'Notifications', signout: 'Sign out',
     queue: 'Case queue', overview: 'Overview', users: 'Staff & roles',
     audit: 'Audit log', access: 'Access rules', lookup: 'Identity lookup',
-    register: 'Register citizen', departments: 'Departments',
+    register: 'Register citizen', departments: 'Departments', about: 'About',
   },
   st: {
     hello: 'Lumela', home: 'Letlapa la ka', services: 'Litšebeletso',
     apps: 'Likopo tsa ka', appts: 'Likopano', notes: 'Litsebiso',
     signout: 'Tsoa', queue: 'Likopo tse emetseng', overview: 'Kakaretso',
     users: 'Basebelisi le likarolo', audit: 'Rekoto ea liketso',
-    access: 'Melao ea phihlello', departments: 'Mafapha',
+    access: 'Melao ea phihlello', departments: 'Mafapha', about: 'Mabapi',
   },
 };
 
@@ -122,6 +123,7 @@ const NAV = {
     ['/app/appointments', 'appts', 'calendar'],
     ['/app/notifications', 'notes', 'bell'],
     ['/app/departments', 'departments', 'building'],
+    ['/app/about', 'about', 'info'],
   ],
   staff: [
     ['/app', 'queue', 'inbox'],

@@ -1,7 +1,11 @@
 .App {
   text-align: center;
 }
+/* Reserved for App-level overrides. The global theme lives in index.css. */
 
+.App {
+  text-align: center;
+}
 .App-logo {
   height: 40vmin;
   pointer-events: none;

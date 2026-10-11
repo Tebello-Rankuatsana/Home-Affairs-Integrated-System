@@ -1,4 +1,4 @@
-// CITIZEN MODULE: dashboard, service catalogue, apply wizard (documents + payment), tracking, appointments, notifications.
+// CITIZEN MODULE: dashboard, service catalogue, apply wizard (documents + payment), tracking, appointments, notifications, about.
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useApp, Card, Badge, ApptBadge, DocBadge, Field, Steps, Page, Loading, Icon, FIELD_LABELS, TERMINAL, uiStatus, statusLabel } from '../core.jsx';
@@ -73,8 +73,8 @@ export function Apply() {
   const nav = useNavigate();
   const [at, setAt] = useState(0);
   const [consent, setConsent] = useState(false);
-  const [up, setUp] = useState({}); // documents uploaded during this application, by type
-  const [busy, setBusy] = useState(''); // '' | 'upload:<type>' | 'submit'
+  const [up, setUp] = useState({});
+  const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
   const [method, setMethod] = useState(PAYMENT_METHODS[0][0]);
   const [result, setResult] = useState(null);
@@ -182,7 +182,7 @@ export function ApplicationDetail() {
   const { id } = useParams();
   const { svcByCode, deptName, refreshApps, refreshNotes, flash } = useApp();
   const [a, setA] = useState(null);
-  const [state, setState] = useState('loading'); // 'loading' | 'ok' | 'missing'
+  const [state, setState] = useState('loading');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [note, setNote] = useState('');
@@ -350,6 +350,77 @@ export function Notifications() {
         ))}
         {!notes.length && <p className="muted">No notifications yet.</p>}
       </Card>
+    </Page>
+  );
+}
+
+export function About() {
+  const { user } = useApp();
+  return (
+    <Page title="About GovServe Lesotho" sub="One platform, one verified identity, every department connected.">
+      <Card>
+        <div className="about-hero">
+          <Icon name="shield-check" size={40} />
+          <div>
+            <h3>One verified identity from Home Affairs.</h3>
+            <p className="muted">
+              Apply once, track every step, and stop repeating the same documents.
+            </p>
+          </div>
+        </div>
+      </Card>
+
+      <div className="grid3">
+        <Card>
+          <div className="about-point">
+            <span className="about-icon"><Icon name="lock" size={22} /></span>
+            <h3>Departments see only what they need</h3>
+            <p className="muted">
+              When you apply for a service, Home Affairs releases only the fields that department
+              is authorised to receive. The rest stays with Home Affairs.
+            </p>
+          </div>
+        </Card>
+
+        <Card>
+          <div className="about-point">
+            <span className="about-icon"><Icon name="list" size={22} /></span>
+            <h3>Every access to your data is recorded</h3>
+            <p className="muted">
+              Each time a department requests your identity, the request is logged. Nothing is
+              shared silently and nothing is hidden from the record.
+            </p>
+          </div>
+        </Card>
+
+        <Card>
+          <div className="about-point">
+            <span className="about-icon"><Icon name="globe" size={22} /></span>
+            <h3>Works on mobile and low bandwidth</h3>
+            <p className="muted">
+              The platform is built to stay usable on small screens and slow connections, so
+              services reach every citizen, not only those with fast internet.
+            </p>
+          </div>
+        </Card>
+      </div>
+
+      {user?.firstName && (
+        <Card title={`Welcome, ${user.firstName}`}>
+          <p className="muted">
+            You are signed in as a verified citizen. From the dashboard you can browse services,
+            submit applications, upload documents once, and track everything in one place.
+          </p>
+          <div className="actions">
+            <Link className="btn primary" to="/app/services">
+              <Icon name="grid" size={16} />Browse services
+            </Link>
+            <Link className="btn" to="/app/applications">
+              <Icon name="file" size={16} />My applications
+            </Link>
+          </div>
+        </Card>
+      )}
     </Page>
   );
 }

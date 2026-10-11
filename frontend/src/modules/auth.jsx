@@ -8,7 +8,7 @@ import coatOfArms from '../../images/coat-of-arms-of-lesotho-seeklogo.png';
 export function Login() {
   const { login, staffLogin } = useApp();
   const nav = useNavigate();
-  const [mode, setMode] = useState('citizen'); // 'citizen' | 'staff'
+  const [mode, setMode] = useState('citizen');
   const [id, setId] = useState('');
   const [otp, setOtp] = useState('');
   const [devOtp, setDevOtp] = useState('');
@@ -29,7 +29,7 @@ export function Login() {
     if (!/^[A-Z0-9-]{5,}$/i.test(id.trim())) return setErr('Enter your National ID number exactly as printed on your ID, for example LS-9004127788.');
     return run(async () => {
       const r = await api.auth.requestOtp(id.trim());
-      setDevOtp(r?.devOtp ?? ''); // the backend only returns this in development / demo mode
+      setDevOtp(r?.devOtp ?? '');
       setOtp(''); setStep(2);
     });
   };
@@ -49,11 +49,11 @@ export function Login() {
       <aside>
         <div className="crest"><img src={coatOfArms} alt="Coat of arms of Lesotho" /></div>
         <h1>GovServe Lesotho</h1>
-        <p>One verified identity from Home Affairs. Apply once, track every step, and stop repeating the same documents.</p>
+        <p>Sign in with one verified identity to access all government services in one place.</p>
         <ul>
-          <li><Icon name="check-circle" size={20} />Departments see only what they need</li>
-          <li><Icon name="check-circle" size={20} />Every access to your data is recorded</li>
-          <li><Icon name="check-circle" size={20} />Works on mobile and low bandwidth</li>
+          <li><Icon name="shield-check" size={20} />Verified by Home Affairs</li>
+          <li><Icon name="lock" size={20} />Your data, shared under control</li>
+          <li><Icon name="globe" size={20} />Available on mobile and low bandwidth</li>
         </ul>
       </aside>
       <main id="main">
