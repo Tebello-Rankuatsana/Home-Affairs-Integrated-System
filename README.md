@@ -1,5 +1,8 @@
 # Government Services Platform: Frontend Prototype
 
+React + CSS
+
+## Run it
 
 ```
 cd frontend
