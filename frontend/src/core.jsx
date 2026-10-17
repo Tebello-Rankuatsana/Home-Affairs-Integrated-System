@@ -11,6 +11,16 @@ import {
 } from './api.js';
 import { humanize } from './format.js';
 
+// ---------------------------------------------------------------------------
+// Identity helpers
+// ---------------------------------------------------------------------------
+// Services a temporary-ID holder is allowed to use. Everything else is
+// blocked until the citizen upgrades to a full national ID.
+export const SELF_SERVICE = ['ID_APPLICATION', 'BIRTH_CERTIFICATE'];
+export const hasFullId = (user) => !!user && !user.temporaryId;
+export const canAccessService = (user, serviceCode) =>
+  hasFullId(user) || SELF_SERVICE.includes(serviceCode);
+
 // Icons
 const ICONS = {
   check: <polyline points="20 6 9 17 4 12" />,
@@ -49,6 +59,9 @@ const ICONS = {
   building: <><rect x="4" y="2" width="16" height="20" rx="2" /><path d="M9 22v-4h6v4" /><path d="M8 6h.01M16 6h.01M8 10h.01M16 10h.01M8 14h.01M16 14h.01" /></>,
   'arrow-left': <><path d="M19 12H5" /><path d="m12 19-7-7 7-7" /></>,
   info: <><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></>,
+  help: <><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></>,
+  eye: <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></>,
+  'eye-off': <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></>,
 };
 
 export const Icon = ({ name, size = 16, className = '' }) => (
@@ -115,6 +128,7 @@ const T = {
   },
 };
 
+// Nav for each role. Citizens with a temporary ID see a reduced menu.
 const NAV = {
   citizen: [
     ['/app', 'home', 'layout'],
@@ -123,6 +137,13 @@ const NAV = {
     ['/app/appointments', 'appts', 'calendar'],
     ['/app/notifications', 'notes', 'bell'],
     ['/app/departments', 'departments', 'building'],
+    ['/app/about', 'about', 'info'],
+  ],
+  citizenTemp: [
+    ['/app', 'home', 'layout'],
+    ['/app/services', 'services', 'grid'],
+    ['/app/applications', 'apps', 'file'],
+    ['/app/notifications', 'notes', 'bell'],
     ['/app/about', 'about', 'info'],
   ],
   staff: [
@@ -162,6 +183,8 @@ const toUser = (s) => {
       firstName: u.firstName ?? '',
       name: `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() || u.nationalId || 'Citizen',
       nid: u.nationalId,
+      temporaryId: !!u.temporaryId,
+      temporaryIdExpiresAt: u.temporaryIdExpiresAt ?? null,
     };
   }
   return {
@@ -266,8 +289,15 @@ export function Provider({ children }) {
     setSession(s);
   };
 
+  // Citizen login by password (new) OR OTP (legacy)
   const login = async (nationalId, code) => begin(await api.auth.verifyOtp(nationalId, code));
+  const loginWithPassword = async (nationalId, password) =>
+    begin(await api.auth.login(nationalId, password));
   const staffLogin = async (email, password) => begin(await api.auth.staffLogin(email, password));
+  // Citizen self-registration (new)
+  const registerCitizen = async (body) => begin(await api.auth.register(body));
+  // Password recovery request (new)
+  const requestRecovery = async (body) => api.auth.recover(body);
 
   const logout = async () => {
     try { await api.auth.logout(); } catch { /* token may already be invalid */ }
@@ -288,8 +318,10 @@ export function Provider({ children }) {
     services, departments, catalogReady,
     apps, appsReady, notes, docs, profile, toast,
     t, deptName, svcByCode,
-    login, staffLogin, logout, flash, markAllRead,
+    login, loginWithPassword, registerCitizen, requestRecovery,
+    staffLogin, logout, flash, markAllRead,
     refreshApps, refreshNotes, refreshDocs,
+    hasFullId, canAccessService, SELF_SERVICE,
   };
   return <Ctx.Provider value={v}>{children}</Ctx.Provider>;
 }
@@ -329,6 +361,19 @@ export const Field = ({ label, hint, error, children }) => (
   </div>
 );
 
+// Contextual help inline panel
+export const Help = ({ title, children }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="help">
+      <button type="button" className="help-trigger" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        <Icon name="help" size={16} />{title ?? 'Need help?'}
+      </button>
+      {open && <div className="help-panel">{children}</div>}
+    </div>
+  );
+};
+
 export const Steps = ({ items, at }) => (
   <ol className="steps" aria-label="Progress">
     {items.map((x, i) => (
@@ -354,13 +399,16 @@ export const Loading = ({ text = 'Loading…' }) => (
 export function Shell() {
   const { user, logout, t, lang, setLang, textScale, setTextScale, notes, toast, deptName } = useApp();
   const unread = notes.filter((n) => !n.readAt).length;
-  const roleLabel = {
-    citizen: 'Citizen',
-    officer: 'Home Affairs officer',
-    admin: 'Administrator',
-    staff: deptName(user.dept),
-  }[user.role];
+  const roleLabel = user.temporaryId
+    ? 'Temporary ID holder'
+    : {
+        citizen: 'Citizen',
+        officer: 'Home Affairs officer',
+        admin: 'Administrator',
+        staff: deptName(user.dept),
+      }[user.role];
   const adjustTextScale = (delta) => setTextScale((scale) => Math.min(1, Math.max(-1, scale + delta)));
+  const navItems = user.role === 'citizen' && user.temporaryId ? NAV.citizenTemp : NAV[user.role];
 
   return (
     <div className={'shell' + (textScale === 1 ? ' big' : textScale === -1 ? ' small' : '')}>
@@ -406,7 +454,7 @@ export function Shell() {
       </header>
       <div className="body">
         <nav className="side" aria-label="Main">
-          {NAV[user.role].map(([to, k, ic]) => (
+          {navItems.map(([to, k, ic]) => (
             <NavLink key={to} to={to} end={to === '/app'}>
               <Icon name={ic} size={18} />{t(k)}
             </NavLink>

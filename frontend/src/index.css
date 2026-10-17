@@ -980,3 +980,29 @@ progress {
 .card:hover .about-icon {
   transform: scale(1.06) rotate(-2deg);
 }
+
+/* ---------- Password visibility toggle ---------- */
+.pw-wrap{position:relative}
+.pw-wrap .input{padding-right:44px}
+.pw-toggle{position:absolute;right:8px;top:50%;transform:translateY(-30%);border:0;background:transparent;padding:8px;cursor:pointer;color:var(--mute);border-radius:8px}
+.pw-toggle:hover{color:var(--green);background:var(--green-soft)}
+
+/* ---------- Contextual help ---------- */
+.help{margin-top:14px}
+.help-trigger{display:inline-flex;align-items:center;gap:6px;background:var(--green-soft);border:1px solid var(--green-line);border-radius:99px;padding:6px 12px;font:inherit;font-size:.85em;font-weight:700;color:var(--green-hover);cursor:pointer;transition:background-color .15s ease}
+.help-trigger:hover{background:#d8f0e1}
+.help-panel{margin-top:10px;padding:14px 16px;border-radius:var(--r);background:#f6faf7;border:1px solid var(--line)}
+
+/* ---------- Document preview modal ---------- */
+.modal-backdrop{position:fixed;inset:0;background:rgba(6,48,31,.55);display:flex;align-items:center;justify-content:center;z-index:50;padding:24px;animation:fadeIn .2s ease}
+.modal{background:#fff;border-radius:var(--r);max-width:820px;width:100%;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.modal-h{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#fbfdfc,#f6faf7)}
+.modal-h h2{margin:0;font-size:1em;word-break:break-all}
+.modal-b{padding:16px;overflow:auto;background:#f6faf7;text-align:center}
+.modal-f{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 20px;border-top:1px solid var(--line);flex-wrap:wrap}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+
+@media(max-width:600px){
+  .modal-backdrop{padding:8px}
+  .modal-f{flex-direction:column;align-items:stretch}
+}
