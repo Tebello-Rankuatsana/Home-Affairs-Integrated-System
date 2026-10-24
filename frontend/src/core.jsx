@@ -9,7 +9,8 @@ import {
 import { humanize } from './format.js';
 
 // Identity helpers
-export const SELF_SERVICE = ['ID_APPLICATION', 'BIRTH_CERTIFICATE'];
+// TEMPORARY ID HOLDERS CAN ONLY APPLY FOR AN ID
+export const SELF_SERVICE = ['ID_APPLICATION']; 
 export const hasFullId = (user) => !!user && !user.temporaryId;
 export const canAccessService = (user, serviceCode) =>
   hasFullId(user) || SELF_SERVICE.includes(serviceCode);

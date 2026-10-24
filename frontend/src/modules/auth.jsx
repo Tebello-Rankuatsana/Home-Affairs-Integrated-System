@@ -359,7 +359,7 @@ function Register({ onDone, registerCitizen, flash }) {
               <Icon name="info" size={20} />
               <div>
                 <b>Which identity documents do you have?</b>
-                <small>If you have no ID or birth certificate yet, we will create a temporary 20-day ID so you can still access ID and Birth Certificate services.</small>
+                <small>If you have no ID or birth certificate yet, we will create a temporary 20-day ID so you can still access ID application services.</small>
               </div>
             </div>
             <div className="seg" role="group" aria-label="Identity option" style={{ marginBottom: 16 }}>
@@ -400,7 +400,7 @@ function Register({ onDone, registerCitizen, flash }) {
                   <Icon name="alert" size={20} />
                   <div>
                     <b>No ID or birth certificate?</b>
-                    <small>You will get a temporary ID valid for 20 days. Access is limited to Birth Certificate and ID application services. Once your official ID is issued, the temporary one is automatically disabled.</small>
+                    <small>You will get a temporary ID valid for 20 days. Access is limited to ID application services. Once your official ID is issued, the temporary one is automatically disabled.</small>
                   </div>
                 </div>
                 <Field label="Place of birth" required>
