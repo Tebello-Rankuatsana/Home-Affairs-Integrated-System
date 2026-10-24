@@ -111,6 +111,7 @@ export const normalizeService = (s) => ({
   docs: s.requiredDocuments ?? [],
   dept: s.department?.code ?? null,
   currency: s.currency ?? 'LSL',
+  formSchema: s.formSchema ?? [],
 });
 
 export const normalizeDept = (d) => ({ code: d.code, name: d.name });
@@ -153,19 +154,11 @@ export const normalizeAppt = (a) => {
 
 export const api = {
   auth: {
-    // Legacy OTP login (kept for citizens without a password)
     requestOtp: (nationalId) => post('/auth/otp/request', { nationalId }),
     verifyOtp: (nationalId, code) => post('/auth/otp/verify', { nationalId, code }),
-
-    // Password-based citizen login
     login: (nationalId, password) => post('/auth/login', { nationalId, password }),
-
-    // Citizen self-registration
     register: (body) => post('/auth/register', body),
-
-    // Password recovery request
     recover: (body) => post('/auth/recover', body),
-
     staffLogin: (email, password) => post('/auth/staff/login', { email, password }),
     logout: () => post('/auth/logout', {}),
   },

@@ -193,7 +193,6 @@ model DepartmentFieldScope {
 
 // Service type
 // One row per service a department offers. `code` is the stable API identifier.
-
 model ServiceType {
   serviceId          BigInt        @id @default(autoincrement()) @map("service_id")
   departmentId       BigInt        @map("department_id")
@@ -204,6 +203,8 @@ model ServiceType {
   currency           String?       @default("LSL") @db.VarChar(10)
   availableOnline    Boolean?      @map("available_online")
   requiredDocuments  String[]      @map("required_documents")
+  formSchema         Json?         @map("form_schema") // <--- The new line
+  
   department         Department    @relation(fields: [departmentId], references: [departmentId], onUpdate: NoAction, map: "fk_service_department")
   applications       Application[]
   appointments       Appointment[]
@@ -451,3 +452,4 @@ model Appointment {
   @@index([status])
   @@map("appointment")
 }
+

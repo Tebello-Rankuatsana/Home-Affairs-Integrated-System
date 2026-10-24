@@ -260,9 +260,18 @@ function Register({ onDone, registerCitizen, flash }) {
     if (!answer.trim()) return setErr('Enter an answer to the security question.');
     setBusy(true); setErr('');
     try {
+      // Ensure the date is exactly YYYY-MM-DD to pass backend Zod validation
+      let formattedDob = dateOfBirth;
+      if (dateOfBirth) {
+        const d = new Date(dateOfBirth);
+        if (!Number.isNaN(d.getTime())) {
+          formattedDob = d.toISOString().split('T')[0];
+        }
+      }
+
       const body = {
         fullName: fullName.trim(),
-        dateOfBirth,
+        dateOfBirth: formattedDob,
         email: email.trim() || undefined,
         phone: phone.trim() || undefined,
         password,
@@ -281,9 +290,7 @@ function Register({ onDone, registerCitizen, flash }) {
               parentGuardianNames: parentNames.trim(),
             }),
       };
-      // Optional file upload for ID — done after the account exists
       const created = await registerCitizen(body);
-      // If an ID scan was provided, upload it now that we have a session
       if (hasId && idUpload) {
         try { await api.documents.upload(idUpload, 'NATIONAL_ID'); } catch { /* non-fatal */ }
       }
@@ -294,7 +301,14 @@ function Register({ onDone, registerCitizen, flash }) {
         ? 'Temporary ID created. It will be auto-disabled once your real ID is issued.'
         : 'Account created. Welcome to GovServe Lesotho.');
       onDone();
-    } catch (ex) { setErr(ex.message); } finally { setBusy(false); }
+    } catch (ex) {
+      // Display exact Zod validation errors if present
+      let msg = ex.message;
+      if (ex.issues && ex.issues.length > 0) {
+        msg = ex.issues.map(i => `${i.path}: ${i.message}`).join(', ');
+      }
+      setErr(msg); 
+    } finally { setBusy(false); }
   };
 
   return (

@@ -1,5 +1,4 @@
-// CITIZEN MODULE: dashboard, service catalogue, apply wizard (documents + payment),
-// tracking, appointments, notifications, about.
+// CITIZEN MODULE
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useApp, Card, Badge, ApptBadge, DocBadge, Field, Steps, Page, Loading, Icon, Help, FIELD_LABELS, TERMINAL, uiStatus, statusLabel } from '../core.jsx';
@@ -111,8 +110,10 @@ export function Apply() {
   const { svcByCode, deptName, catalogReady, profile, docs, refreshApps, refreshNotes, refreshDocs } = useApp();
   const svc = svcByCode(id);
   const nav = useNavigate();
+  
   const [at, setAt] = useState(0);
   const [consent, setConsent] = useState(false);
+  const [formValues, setFormValues] = useState({}); 
   const [up, setUp] = useState({});
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
@@ -127,7 +128,14 @@ export function Apply() {
   const onFile = (type) => docs.find((d) => d.type === type);
   const chosen = (type) => up[type] ?? onFile(type);
   const docsOk = svc.docs.every((type) => chosen(type));
+  
+  const formFieldsOk = (svc.formSchema || []).every(field => !field.required || formValues[field.name]);
+
   const rows = profile ? Object.entries(FIELD_LABELS).filter(([k]) => profile[k]) : null;
+
+  const handleFormChange = (name, value) => {
+    setFormValues(prev => ({ ...prev, [name]: value }));
+  };
 
   const upload = async (type, file) => {
     if (!file) return;
@@ -153,7 +161,7 @@ export function Apply() {
     try {
       const created = await api.applications.submit({
         serviceCode: svc.code,
-        formData: {},
+        formData: formValues, 
         documentIds: svc.docs.map((type) => chosen(type).id),
       });
       setResult(created);
@@ -165,26 +173,48 @@ export function Apply() {
 
   return (
     <Page title={svc.name} sub={`Handled by ${deptName(svc.dept)}${svc.days ? ` · About ${svc.days} working days` : ''}`}>
-      <Steps items={['Your details', 'Documents', 'Review & pay', 'Done']} at={at} />
+      <Steps items={['Details', 'Documents', 'Review & pay', 'Done']} at={at} />
 
       <Card>
         {at === 0 && (<>
-          <h3>We already have your details</h3>
-          <p className="muted">Home Affairs holds your verified identity. It will share only the details {deptName(svc.dept)} is authorised to receive. You do not need to type them again.</p>
-          {rows === null ? <Loading /> : rows.length ? (
-            <dl className="kv">{rows.map(([k, l]) => <div key={k}><dt>{l}</dt><dd>{profile[k]}</dd></div>)}</dl>
-          ) : <p className="muted">Your verified details will be shared by Home Affairs.</p>}
+          <h3>Application Details</h3>
+          <p className="muted">Home Affairs holds your verified identity. The department will also receive the specific details you provide below for this service.</p>
+          
+          {rows && rows.length > 0 && (
+            <dl className="kv" style={{ marginBottom: 24, background: 'var(--mint-50)', padding: '0 16px', borderRadius: 'var(--r)' }}>
+              <div style={{ padding: '12px 0' }}><dt style={{ fontWeight: 'bold' }}>Verified Identity</dt><dd></dd></div>
+              {rows.map(([k, l]) => (
+                <div key={k}><dt>{l}</dt><dd>{profile[k]}</dd></div>
+              ))}
+            </dl>
+          )}
+
+          {svc.formSchema && svc.formSchema.length > 0 && (
+            <div className="grid2">
+              {svc.formSchema.map(field => (
+                <Field key={field.name} label={field.label} required={field.required}>
+                  {field.type === 'select' ? (
+                    <select className="input" value={formValues[field.name] || ''} onChange={(e) => handleFormChange(field.name, e.target.value)}>
+                      <option value="">Select...</option>
+                      {field.options.map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  ) : (
+                    <input 
+                      className="input" 
+                      type={field.type || 'text'} 
+                      value={formValues[field.name] || ''} 
+                      onChange={(e) => handleFormChange(field.name, e.target.value)} 
+                    />
+                  )}
+                </Field>
+              ))}
+            </div>
+          )}
+
           <label className="check">
             <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
             I agree that Home Affairs may share the details this department is authorised to receive with {deptName(svc.dept)} for this application.
           </label>
-          <Help title="Why am I not asked to type my details?">
-            <p className="muted" style={{ margin: 0 }}>
-              Home Affairs is the authoritative source of your identity. When you apply for a service, we only forward the
-              fields the receiving department is legally allowed to see. You can review what is shared and with whom at any time
-              from the Departments page.
-            </p>
-          </Help>
         </>)}
 
         {at === 1 && (<>
@@ -262,7 +292,7 @@ export function Apply() {
             {at > 0
               ? <button className="btn" disabled={!!busy} onClick={() => { setErr(''); setAt(at - 1); }}>Back</button>
               : <button className="btn" onClick={() => nav('/app/services')}>Cancel</button>}
-            <button className="btn primary" disabled={!!busy || (at === 0 && !consent) || (at === 1 && !docsOk)} onClick={() => (at === 2 ? submit() : (setErr(''), setAt(at + 1)))}>
+            <button className="btn primary" disabled={!!busy || (at === 0 && (!consent || !formFieldsOk)) || (at === 1 && !docsOk)} onClick={() => (at === 2 ? submit() : (setErr(''), setAt(at + 1)))}>
               {busy === 'submit' && <Icon name="loader" size={16} className="spin" />}
               {at === 2 ? (svc.fee ? 'Pay ' + money(svc.fee) + ' and submit' : 'Submit') : 'Continue'}
             </button>
