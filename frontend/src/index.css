@@ -48,6 +48,7 @@ body {
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  transition: background-color var(--t), color var(--t);
 }
 
 .shell.small { font-size: 14.5px; }
@@ -84,6 +85,51 @@ small { display: block; color: var(--mute); }
   border-radius: var(--r-sm);
   z-index: 99;
   box-shadow: var(--shadow);
+}
+
+/* ---------- Accessibility Overrides ---------- */
+
+/* High Contrast Mode */
+.shell.high-contrast {
+  --bg: #000000;
+  --card: #000000;
+  --ink: #ffffff;
+  --deep: #ffff00;
+  --mint-50: #000000;
+  --mint-100: #222222;
+  --mint-200: #ffff00;
+  --mint-300: #ffff00;
+  --mint-400: #ffff00;
+  --mint-500: #ffff00;
+  --mint-600: #ffff00;
+  --mint-700: #ffff00;
+  --mint-800: #ffff00;
+  --mint-900: #000000;
+  --line: #ffff00;
+  --mute: #eeeeee;
+  --shadow: none;
+  --shadow-sm: none;
+  --shadow-xs: none;
+}
+.shell.high-contrast .hdr { border-bottom: 2px solid var(--line); }
+.shell.high-contrast .side { border-right: 2px solid var(--line); }
+.shell.high-contrast .card { border: 2px solid var(--line); }
+.shell.high-contrast .btn { border: 2px solid var(--line); }
+.shell.high-contrast .btn.primary { background: var(--line); color: #000; }
+.shell.high-contrast .badge { border: 2px solid var(--line); color: #000; background: var(--line); }
+.shell.high-contrast .stat::before { background: var(--line); }
+
+/* Dyslexia-Friendly Font */
+.shell.dyslexia-friendly {
+  font-family: "Comic Sans MS", "Comic Sans", "OpenDyslexic", sans-serif;
+  letter-spacing: 0.05em;
+  word-spacing: 0.1em;
+  line-height: 1.7;
+}
+.shell.dyslexia-friendly h1, 
+.shell.dyslexia-friendly h2, 
+.shell.dyslexia-friendly h3 {
+  letter-spacing: 0.02em;
 }
 
 /* ---------- Header ---------- */
@@ -150,21 +196,31 @@ small { display: block; color: var(--mute); }
 .nav-section:first-child { padding-left: 0; }
 .nav-section:last-child { padding-right: 0; }
 
-.accessibility { gap: 4px; }
-.access-btn {
-  width: 40px;
-  min-height: 40px;
-  padding: 0;
-  border-radius: var(--r-sm);
-  background: var(--mint-50);
-  border: 1px solid transparent;
-  color: var(--mint-700) !important;
+/* Accessibility Dropdown */
+.accessibility-menu-container { position: relative; }
+.accessibility-menu-container .btn.active { background: var(--mint-100); color: var(--mint-900) !important; }
+
+.access-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 280px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow-lg);
+  padding: 16px;
+  z-index: 50;
+  animation: fadeIn var(--t-fast);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
-.access-btn:hover {
-  background: var(--mint-100);
-  border-color: var(--mint-200);
-  color: var(--mint-800) !important;
-}
+
+.access-group { display: flex; flex-direction: column; gap: 8px; }
+.access-label { font-size: 0.8em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--mute); }
+.access-row { display: flex; gap: 8px; }
+.access-row .btn { flex: 1; }
 
 .notice-indicator {
   display: inline-flex;
@@ -803,27 +859,6 @@ progress {
 }
 .auth-note .icon { color: var(--mint-600); margin-top: 2px; }
 
-.chips { display: flex; gap: 10px; flex-wrap: wrap; }
-.chip {
-  border: 1.5px solid var(--mint-200);
-  background: var(--mint-50);
-  color: var(--mint-800);
-  border-radius: var(--r-pill);
-  padding: 9px 18px;
-  min-height: 42px;
-  cursor: pointer;
-  font: inherit;
-  font-weight: 700;
-  transition: all var(--t-fast);
-}
-.chip:hover {
-  background: linear-gradient(135deg, var(--mint-500), var(--mint-600));
-  color: #fff;
-  border-color: transparent;
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(34, 197, 138, 0.30);
-}
-
 /* ---------- Misc ---------- */
 
 .spin { display: inline-block; animation: spin 1s linear infinite; }
@@ -945,6 +980,10 @@ progress {
 .perm-btn.no:hover  { background: #fee2e2; }
 
 /* ---------- Responsive ---------- */
+
+@media (max-width: 900px) {
+  .hide-on-mobile { display: none; }
+}
 
 @media (max-width: 800px) {
   .auth, .grid2 { grid-template-columns: 1fr; }

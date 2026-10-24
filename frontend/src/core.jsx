@@ -1,10 +1,10 @@
 // Core store, icons, translations, shared UI kit, and the app shell.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import coatOfArms from '../images/coat-of-arms-of-lesotho-seeklogo.png';
 import {
   api, asList, loadSession, normalizeDept, normalizeDoc, normalizeProfile,
-  normalizeService, saveSession, setOnUnauthorized, setToken,
+  normalizeService, saveSession, setOnUnauthorized, setToken, getToken
 } from './api.js';
 import { humanize } from './format.js';
 
@@ -59,6 +59,10 @@ const ICONS = {
   briefcase: <><rect x="2" y="7" width="20" height="14" rx="2" ry="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></>,
   mail: <><rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" /></>,
   phone: <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />,
+  accessibility: <><circle cx="16" cy="4" r="1"/><path d="m18 19 1-7-6 1"/><path d="m5 8 3-3 5.5 3-2.36 3.5"/><path d="M4.24 14.5a5 5 0 0 0 6.88 6"/><path d="M13.76 17.5a5 5 0 0 0-6.88-6"/></>,
+  'volume-2': <><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14" /></>,
+  'volume-x': <><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><line x1="22" y1="9" x2="16" y2="15" /><line x1="16" y1="9" x2="22" y2="15" /></>,
+  type: <><polyline points="4 7 4 4 20 4 20 7" /><line x1="9" y1="20" x2="15" y2="20" /><line x1="12" y1="4" x2="12" y2="20" /></>,
 };
 
 export const Icon = ({ name, size = 16, className = '' }) => (
@@ -198,9 +202,19 @@ const Ctx = createContext();
 export const useApp = () => useContext(Ctx);
 
 export function Provider({ children }) {
-  const [session, setSession] = useState(() => loadSession());
+  const [session, setSession] = useState(() => {
+    const s = loadSession();
+    if (s?.token) setToken(s.token);
+    return s;
+  });
   const [lang, setLang] = useState('en');
+  
+  // Accessibility State
   const [textScale, setTextScale] = useState(0);
+  const [highContrast, setHighContrast] = useState(false);
+  const [dyslexiaFont, setDyslexiaFont] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
   const [services, setServices] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [catalogReady, setCatalogReady] = useState(false);
@@ -269,7 +283,7 @@ export function Provider({ children }) {
   }, []);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !getToken()) return;
     if (user.role === 'citizen') { refreshApps(); refreshNotes(); refreshDocs(); refreshProfile(); }
     else if (user.role === 'staff' || user.role === 'admin') refreshApps();
   }, [user, refreshApps, refreshNotes, refreshDocs, refreshProfile]);
@@ -286,14 +300,11 @@ export function Provider({ children }) {
     setSession(s);
   };
 
-  // Citizen login by password OR OTP
   const login = async (nationalId, code) => begin(await api.auth.verifyOtp(nationalId, code));
   const loginWithPassword = async (nationalId, password) =>
     begin(await api.auth.login(nationalId, password));
   const staffLogin = async (email, password) => begin(await api.auth.staffLogin(email, password));
-  // Citizen self-registration
   const registerCitizen = async (body) => begin(await api.auth.register(body));
-  // Password recovery request
   const requestRecovery = async (body) => api.auth.recover(body);
 
   const logout = async () => {
@@ -311,7 +322,11 @@ export function Provider({ children }) {
   const svcByCode = (code) => services.find((s) => s.code === code);
 
   const v = {
-    user, lang, setLang, textScale, setTextScale,
+    user, lang, setLang, 
+    textScale, setTextScale, 
+    highContrast, setHighContrast,
+    dyslexiaFont, setDyslexiaFont,
+    isSpeaking, setIsSpeaking,
     services, departments, catalogReady,
     apps, appsReady, notes, docs, profile, toast,
     t, deptName, svcByCode,
@@ -361,7 +376,6 @@ export const Field = ({ label, hint, error, children }) => (
   </div>
 );
 
-// Contextual help inline panel
 export const Help = ({ title, children }) => {
   const [open, setOpen] = useState(false);
   return (
@@ -397,7 +411,16 @@ export const Loading = ({ text = 'Loading…' }) => (
 
 // App shell
 export function Shell() {
-  const { user, logout, t, lang, setLang, textScale, setTextScale, notes, toast, deptName } = useApp();
+  const { 
+    user, logout, t, lang, setLang, 
+    textScale, setTextScale, highContrast, setHighContrast, 
+    dyslexiaFont, setDyslexiaFont, isSpeaking, setIsSpeaking, 
+    notes, toast, deptName 
+  } = useApp();
+  
+  const location = useLocation();
+  const [accessMenuOpen, setAccessMenuOpen] = useState(false);
+
   const unread = notes.filter((n) => !n.readAt).length;
   const roleLabel = user.temporaryId
     ? 'Temporary ID holder'
@@ -407,27 +430,110 @@ export function Shell() {
         admin: 'Administrator',
         staff: deptName(user.dept),
       }[user.role];
+      
   const adjustTextScale = (delta) => setTextScale((scale) => Math.min(1, Math.max(-1, scale + delta)));
   const navItems = user.role === 'citizen' && user.temporaryId ? NAV.citizenTemp : NAV[user.role];
 
+  // Text-to-Speech Logic
+  const stopSpeaking = useCallback(() => {
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+  }, [setIsSpeaking]);
+
+  // Stop speaking when navigating to a new page
+  useEffect(() => { stopSpeaking(); }, [location.pathname, stopSpeaking]);
+
+  const readPage = () => {
+    if (!('speechSynthesis' in window)) {
+      alert('Text-to-speech is not supported in your browser.');
+      return;
+    }
+    stopSpeaking();
+    const mainContent = document.getElementById('main');
+    if (!mainContent) return;
+    
+    const text = mainContent.innerText;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.onend = () => setIsSpeaking(false);
+    
+    setIsSpeaking(true);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const shellClasses = [
+    'shell',
+    textScale === 1 ? 'big' : textScale === -1 ? 'small' : '',
+    highContrast ? 'high-contrast' : '',
+    dyslexiaFont ? 'dyslexia-friendly' : ''
+  ].filter(Boolean).join(' ');
+
   return (
-    <div className={'shell' + (textScale === 1 ? ' big' : textScale === -1 ? ' small' : '')}>
+    <div className={shellClasses}>
       <a href="#main" className="skip">Skip to main content</a>
       <header className="hdr">
         <div className="brand">
           <span className="brand-crest"><img src={coatOfArms} alt="Coat of arms of Lesotho" /></span>
           <div className="brand-copy"><b>GovServe Lesotho</b><small>Integrated Government Services</small></div>
         </div>
+        
         <div className="hdr-r">
-          <div className="nav-section accessibility" role="group" aria-label="Text size controls">
-            <button className="btn ghost light access-btn" type="button" onClick={() => adjustTextScale(-1)} aria-label="Decrease text size" title="Decrease text size"><Icon name="a-down" size={20} /></button>
-            <button className="btn ghost light access-btn" type="button" onClick={() => adjustTextScale(1)} aria-label="Increase text size" title="Increase text size"><Icon name="a-up" size={20} /></button>
-          </div>
           <div className="nav-section language">
             <button className="btn ghost light" type="button" onClick={() => setLang(lang === 'en' ? 'st' : 'en')} aria-label="Change language">
               <Icon name="globe" size={17} />{lang === 'en' ? 'Sesotho' : 'English'}
             </button>
           </div>
+
+          <div className="nav-section accessibility-menu-container">
+            <button 
+              className={'btn ghost light ' + (accessMenuOpen ? 'active' : '')} 
+              type="button" 
+              onClick={() => setAccessMenuOpen(!accessMenuOpen)}
+              aria-expanded={accessMenuOpen}
+              aria-haspopup="true"
+              aria-label="Accessibility options"
+            >
+              <Icon name="accessibility" size={20} />
+              <span className="hide-on-mobile">Accessibility</span>
+            </button>
+            
+            {accessMenuOpen && (
+              <div className="access-dropdown" role="menu">
+                <div className="access-group">
+                  <span className="access-label">Text Size</span>
+                  <div className="access-row">
+                    <button className="btn sm" onClick={() => adjustTextScale(-1)} aria-label="Decrease text size"><Icon name="a-down" size={16} /> Smaller</button>
+                    <button className="btn sm" onClick={() => adjustTextScale(1)} aria-label="Increase text size"><Icon name="a-up" size={16} /> Larger</button>
+                  </div>
+                </div>
+                
+                <div className="access-group">
+                  <span className="access-label">Display</span>
+                  <button className={'btn sm block ' + (highContrast ? 'primary' : '')} onClick={() => setHighContrast(!highContrast)} aria-pressed={highContrast}>
+                    <Icon name="eye" size={16} /> High Contrast Mode
+                  </button>
+                  <button className={'btn sm block ' + (dyslexiaFont ? 'primary' : '')} onClick={() => setDyslexiaFont(!dyslexiaFont)} aria-pressed={dyslexiaFont}>
+                    <Icon name="type" size={16} /> Dyslexia-Friendly Font
+                  </button>
+                </div>
+
+                <div className="access-group">
+                  <span className="access-label">Text to Speech</span>
+                  {isSpeaking ? (
+                    <button className="btn sm block danger" onClick={stopSpeaking}>
+                      <Icon name="volume-x" size={16} /> Stop Reading
+                    </button>
+                  ) : (
+                    <button className="btn sm block" onClick={readPage}>
+                      <Icon name="volume-2" size={16} /> Read This Page
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           {user.role === 'citizen' && (
             <div className="nav-section notice">
               <span className="notice-indicator">
@@ -447,7 +553,7 @@ export function Shell() {
           </div>
           <div className="nav-section signout">
             <button className="btn ghost light signout-btn" type="button" onClick={logout}>
-              <Icon name="log-out" size={16} />{t('signout')}
+              <Icon name="log-out" size={16} /><span className="hide-on-mobile">{t('signout')}</span>
             </button>
           </div>
         </div>
