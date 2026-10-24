@@ -1,7 +1,7 @@
 // CITIZEN MODULE
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useApp, Card, Badge, ApptBadge, DocBadge, Field, Steps, Page, Loading, Icon, Help, FIELD_LABELS, TERMINAL, uiStatus, statusLabel } from '../core.jsx';
+import { useApp, Card, Badge, ApptBadge, DocBadge, Field, Steps, Page, Loading, Icon, Help, FIELD_LABELS, TERMINAL, uiStatus, statusLabel, canAccessService } from '../core.jsx';
 import { api, asList, normalizeAppt, normalizeDoc, PAYMENT_METHODS } from '../api.js';
 import { fmtDate, fmtDateTime, fmtTime, humanize, money, todayISO } from '../format.js';
 
@@ -18,15 +18,32 @@ export function CitizenHome() {
       .catch(() => setAppts([]));
   }, []);
   const next = (appts ?? []).find((a) => a.status === 'BOOKED' && new Date(a.startsAt) > new Date());
+  const temp = user.temporaryId;
 
   return (
     <Page title={`${t('hello')}, ${user.firstName || user.name}`}
       sub="Here is where your applications and appointments stand today.">
-      <p className="callout ok">
-        <Icon name="shield-check" size={20} />
-        Your identity is verified by Home Affairs. Departments request only the details
-        they need and every request is recorded.
-      </p>
+      {temp && (
+        <div className="callout warn" style={{ marginBottom: 18 }}>
+          <Icon name="alert" size={22} />
+          <div>
+            <b>Temporary ID active</b>
+            <small>
+              You can currently access only ID application services.
+              Your temporary ID expires {user.temporaryIdExpiresAt ? fmtDate(user.temporaryIdExpiresAt) : 'in 20 days'} and
+              will be disabled automatically once your official ID is issued.
+            </small>
+          </div>
+        </div>
+      )}
+
+      {!temp && (
+        <p className="callout ok">
+          <Icon name="shield-check" size={20} />
+          Your identity is verified by Home Affairs. Departments request only the details
+          they need and every request is recorded.
+        </p>
+      )}
 
       <div className="grid3">
         <div className="stat"><b>{apps.filter((a) => !TERMINAL.includes(a.status)).length}</b>Active applications</div>
@@ -34,7 +51,7 @@ export function CitizenHome() {
         <div className="stat"><b>{notes.filter((n) => !n.readAt).length}</b>Unread notifications</div>
       </div>
 
-      {profile && (
+      {!temp && profile && (
         <Card title="Verified identity" action={<Link to="/app/about">Learn more</Link>}>
           <dl className="kv">
             {Object.entries(FIELD_LABELS).map(([k, l]) => (
@@ -69,17 +86,30 @@ export function CitizenHome() {
 }
 
 export function Services() {
-  const { services, departments, catalogReady, deptName } = useApp();
+  const { user, services, departments, catalogReady, deptName } = useApp();
   const [q, setQ] = useState('');
   const [d, setD] = useState('');
-
+  const temp = user.temporaryId;
+  
   const list = services.filter((s) =>
     (s.name ?? '').toLowerCase().includes(q.toLowerCase()) &&
-    (!d || s.dept === d)
+    (!d || s.dept === d) &&
+    canAccessService(user, s.code)
   );
+  
+  const blocked = services.filter((s) => !canAccessService(user, s.code)).length;
 
   return (
     <Page title="Government services" sub="Find a service from any department in one place.">
+      {temp && (
+        <div className="callout warn" style={{ marginBottom: 16 }}>
+          <Icon name="alert" size={20} />
+          <div>
+            <b>Limited access</b>
+            <small>Because you are using a temporary ID, only ID application services are shown. {blocked} other services will become available once your official ID is issued.</small>
+          </div>
+        </div>
+      )}
       <div className="filters">
         <input className="input" placeholder="Search services, e.g. passport"
           aria-label="Search services" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -107,7 +137,7 @@ export function Services() {
 
 export function Apply() {
   const { id } = useParams();
-  const { svcByCode, deptName, catalogReady, profile, docs, refreshApps, refreshNotes, refreshDocs } = useApp();
+  const { user, svcByCode, deptName, catalogReady, profile, docs, refreshApps, refreshNotes, refreshDocs } = useApp();
   const svc = svcByCode(id);
   const nav = useNavigate();
   
@@ -124,6 +154,20 @@ export function Apply() {
 
   if (!catalogReady) return <Loading />;
   if (!svc) return <p>Service not found. <Link to="/app/services">Back to services</Link></p>;
+  if (!canAccessService(user, svc.code)) {
+    return (
+      <Page title={svc.name} sub="Not available with a temporary ID">
+        <p className="callout warn">
+          <Icon name="alert" size={20} />
+          <div>
+            <b>You need an official ID for this service</b>
+            <small>Your temporary ID only unlocks ID application services. Once your official ID is issued, you can apply for {svc.name}.</small>
+          </div>
+          <Link className="btn" to="/app/services">Back to services</Link>
+        </p>
+      </Page>
+    );
+  }
 
   const onFile = (type) => docs.find((d) => d.type === type);
   const chosen = (type) => up[type] ?? onFile(type);
