@@ -4,7 +4,7 @@
 
 import { useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import { useApp, Card, Page, Icon, Loading, FIELD_LABELS, Help, canAccessService } from '../core.jsx';
+import { useApp, Card, Page, Icon, Loading, FIELD_LABELS, Help } from '../core.jsx';
 
 const MINISTRY = {
   HOME_AFFAIRS: { code: 'MHA', name: 'Ministry of Home Affairs' },
@@ -94,7 +94,7 @@ export function Departments() {
 
 export function DepartmentDetail() {
   const { code } = useParams();
-  const { user, departments, services, catalogReady } = useApp();
+  const { departments, services, catalogReady } = useApp();
   const nav = useNavigate();
   const [chosenService, setChosenService] = useState('');
 
@@ -136,17 +136,12 @@ export function DepartmentDetail() {
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
               <select className="input" style={{ flex: 1, minWidth: 240, margin: 0 }} value={chosenService} onChange={(e) => setChosenService(e.target.value)} aria-label="Select a service">
                 <option value="">— Select a service —</option>
-                {offered.map((s) => {
-                  const allowed = canAccessService(user, s.code);
-                  return (
-                    <option key={s.code} value={s.code} disabled={!allowed}>
-                      {s.name}{!allowed ? '  (requires official ID)' : ''}
-                    </option>
-                  );
-                })}
+                {offered.map((s) => (
+                  <option key={s.code} value={s.code}>{s.name}</option>
+                ))}
               </select>
               <Link
-                className={'btn primary' + (!chosenService ? ' disabled-link' : '')}
+                className="btn primary"
                 to={chosenService ? `/app/apply/${chosenService}` : '#'}
                 onClick={(e) => { if (!chosenService) e.preventDefault(); }}
                 aria-disabled={!chosenService}
@@ -180,21 +175,18 @@ export function DepartmentDetail() {
         <Card title="Services offered">
           {offered.length ? (
             <div className="grid2">
-              {offered.map((s) => {
-                const allowed = canAccessService(user, s.code);
-                return (
-                  <div key={s.code} style={{ borderTop: '1px solid var(--line)', paddingTop: 10 }}>
-                    <b>{s.name}</b>
-                    <small className="muted">
-                      {s.fee ? `Fee: M ${Number(s.fee).toFixed(2)}` : 'Free'}
-                      {s.days ? ` · About ${s.days} working days` : ''}
-                    </small>
-                    {allowed
-                      ? <Link className="btn sm" to={`/app/apply/${s.code}`} style={{ marginTop: 8 }}>Apply <Icon name="arrow-right" size={12} /></Link>
-                      : <p className="muted" style={{ marginTop: 8 }}><small><Icon name="lock" size={12} /> Requires an official ID</small></p>}
-                  </div>
-                );
-              })}
+              {offered.map((s) => (
+                <div key={s.code} style={{ borderTop: '1px solid var(--line)', paddingTop: 10 }}>
+                  <b>{s.name}</b>
+                  <small className="muted">
+                    {s.fee ? `Fee: M ${Number(s.fee).toFixed(2)}` : 'Free'}
+                    {s.days ? ` · About ${s.days} working days` : ''}
+                  </small>
+                  <Link className="btn sm" to={`/app/apply/${s.code}`} style={{ marginTop: 8 }}>
+                    Apply <Icon name="arrow-right" size={12} />
+                  </Link>
+                </div>
+              ))}
             </div>
           ) : <p className="muted">No services offered online yet.</p>}
         </Card>

@@ -1,7 +1,8 @@
-// CITIZEN MODULE: dashboard, service catalogue, apply wizard (documents + payment), tracking, appointments, notifications, about.
+// CITIZEN MODULE: dashboard, service catalogue, apply wizard (documents + payment),
+// tracking, appointments, notifications, about.
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useApp, Card, Badge, ApptBadge, DocBadge, Field, Steps, Page, Loading, Icon, Help, FIELD_LABELS, TERMINAL, uiStatus, statusLabel, hasFullId, canAccessService, SELF_SERVICE } from '../core.jsx';
+import { useApp, Card, Badge, ApptBadge, DocBadge, Field, Steps, Page, Loading, Icon, Help, FIELD_LABELS, TERMINAL, uiStatus, statusLabel } from '../core.jsx';
 import { api, asList, normalizeAppt, normalizeDoc, PAYMENT_METHODS } from '../api.js';
 import { fmtDate, fmtDateTime, fmtTime, humanize, money, todayISO } from '../format.js';
 
@@ -12,29 +13,21 @@ const FILE_TYPES = '.pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png';
 export function CitizenHome() {
   const { user, t, apps, appsReady, notes, svcByCode, deptName, profile } = useApp();
   const [appts, setAppts] = useState(null);
-  useEffect(() => { api.appointments.list().then((r) => setAppts(asList(r).map(normalizeAppt))).catch(() => setAppts([])); }, []);
+  useEffect(() => {
+    api.appointments.list()
+      .then((r) => setAppts(asList(r).map(normalizeAppt)))
+      .catch(() => setAppts([]));
+  }, []);
   const next = (appts ?? []).find((a) => a.status === 'BOOKED' && new Date(a.startsAt) > new Date());
-  const temp = user.temporaryId;
 
   return (
-    <Page title={`${t('hello')}, ${user.firstName || user.name}`} sub="Here is where your applications and appointments stand today.">
-      {temp && (
-        <div className="callout warn" style={{ marginBottom: 18 }}>
-          <Icon name="alert" size={22} />
-          <div>
-            <b>Temporary ID active</b>
-            <small>
-              You can currently access only ID and Birth Certificate services.
-              Your temporary ID expires {user.temporaryIdExpiresAt ? fmtDate(user.temporaryIdExpiresAt) : 'in 20 days'} and
-              will be disabled automatically once your official ID is issued.
-            </small>
-          </div>
-        </div>
-      )}
-
-      {!temp && (
-        <p className="callout ok"><Icon name="shield-check" size={20} />Your identity is verified by Home Affairs. Departments request only the details they need and every request is recorded.</p>
-      )}
+    <Page title={`${t('hello')}, ${user.firstName || user.name}`}
+      sub="Here is where your applications and appointments stand today.">
+      <p className="callout ok">
+        <Icon name="shield-check" size={20} />
+        Your identity is verified by Home Affairs. Departments request only the details
+        they need and every request is recorded.
+      </p>
 
       <div className="grid3">
         <div className="stat"><b>{apps.filter((a) => !TERMINAL.includes(a.status)).length}</b>Active applications</div>
@@ -42,7 +35,7 @@ export function CitizenHome() {
         <div className="stat"><b>{notes.filter((n) => !n.readAt).length}</b>Unread notifications</div>
       </div>
 
-      {!temp && profile && (
+      {profile && (
         <Card title="Verified identity" action={<Link to="/app/about">Learn more</Link>}>
           <dl className="kv">
             {Object.entries(FIELD_LABELS).map(([k, l]) => (
@@ -77,33 +70,26 @@ export function CitizenHome() {
 }
 
 export function Services() {
-  const { user, services, departments, catalogReady, deptName } = useApp();
+  const { services, departments, catalogReady, deptName } = useApp();
   const [q, setQ] = useState('');
   const [d, setD] = useState('');
-  const temp = user.temporaryId;
+
   const list = services.filter((s) =>
     (s.name ?? '').toLowerCase().includes(q.toLowerCase()) &&
-    (!d || s.dept === d) &&
-    canAccessService(user, s.code)
+    (!d || s.dept === d)
   );
-  const blocked = services.filter((s) => !canAccessService(user, s.code)).length;
 
   return (
     <Page title="Government services" sub="Find a service from any department in one place.">
-      {temp && (
-        <div className="callout warn" style={{ marginBottom: 16 }}>
-          <Icon name="alert" size={20} />
-          <div>
-            <b>Limited access</b>
-            <small>Because you are using a temporary ID, only ID and Birth Certificate services are shown. {blocked} other services will become available once your official ID is issued.</small>
-          </div>
-        </div>
-      )}
       <div className="filters">
-        <input className="input" placeholder="Search services, e.g. passport" aria-label="Search services" value={q} onChange={(e) => setQ(e.target.value)} />
-        <select className="input" aria-label="Department" value={d} onChange={(e) => setD(e.target.value)}><option value="">All departments</option>{departments.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}</select>
+        <input className="input" placeholder="Search services, e.g. passport"
+          aria-label="Search services" value={q} onChange={(e) => setQ(e.target.value)} />
+        <select className="input" aria-label="Department" value={d} onChange={(e) => setD(e.target.value)}>
+          <option value="">All departments</option>
+          {departments.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}
+        </select>
       </div>
-      {!catalogReady ? <Loading /> : <>
+      {!catalogReady ? <Loading /> : (
         <div className="grid3">
           {list.map((s) => (
             <Card key={s.code}>
@@ -114,15 +100,15 @@ export function Services() {
             </Card>
           ))}
         </div>
-        {!list.length && <p>No services match your search. Try a shorter word or clear the department filter.</p>}
-      </>}
+      )}
+      {catalogReady && !list.length && <p>No services match your search. Try a shorter word or clear the department filter.</p>}
     </Page>
   );
 }
 
 export function Apply() {
   const { id } = useParams();
-  const { user, svcByCode, deptName, catalogReady, profile, docs, refreshApps, refreshNotes, refreshDocs } = useApp();
+  const { svcByCode, deptName, catalogReady, profile, docs, refreshApps, refreshNotes, refreshDocs } = useApp();
   const svc = svcByCode(id);
   const nav = useNavigate();
   const [at, setAt] = useState(0);
@@ -133,24 +119,10 @@ export function Apply() {
   const [method, setMethod] = useState(PAYMENT_METHODS[0][0]);
   const [result, setResult] = useState(null);
   const [payErr, setPayErr] = useState('');
-  const [preview, setPreview] = useState(null); // { file, url }
+  const [preview, setPreview] = useState(null);
 
   if (!catalogReady) return <Loading />;
   if (!svc) return <p>Service not found. <Link to="/app/services">Back to services</Link></p>;
-  if (!canAccessService(user, svc.code)) {
-    return (
-      <Page title={svc.name} sub="Not available with a temporary ID">
-        <p className="callout warn">
-          <Icon name="alert" size={20} />
-          <div>
-            <b>You need an official ID for this service</b>
-            <small>Your temporary ID only unlocks ID and Birth Certificate services. Once your official ID is issued, you can apply for {svc.name}.</small>
-          </div>
-          <Link className="btn" to="/app/services">Back to services</Link>
-        </p>
-      </Page>
-    );
-  }
 
   const onFile = (type) => docs.find((d) => d.type === type);
   const chosen = (type) => up[type] ?? onFile(type);
@@ -179,7 +151,11 @@ export function Apply() {
   const submit = async () => {
     setBusy('submit'); setErr(''); setPayErr('');
     try {
-      const created = await api.applications.submit({ serviceCode: svc.code, formData: {}, documentIds: svc.docs.map((type) => chosen(type).id) });
+      const created = await api.applications.submit({
+        serviceCode: svc.code,
+        formData: {},
+        documentIds: svc.docs.map((type) => chosen(type).id),
+      });
       setResult(created);
       if (svc.fee) { try { await api.applications.pay(created.id, method); } catch (e) { setPayErr(e.message); } }
       refreshApps(); refreshNotes();
@@ -229,7 +205,7 @@ export function Apply() {
                 <div>
                   <b>{humanize(type)}</b>
                   {c ? <small className="ok-text"><Icon name="check" size={14} />{up[type] ? `Uploaded: ${c.name}` : 'Already on file. We will reuse it.'}</small>
-                    : <small>Accepted: PDF, JPG or PNG · Max 10 MB</small>}
+                    : <small>Accepted: PDF, JPG or PNG · Max 5 MB</small>}
                 </div>
                 <div className="row-actions">
                   {up[type]?.file && (
@@ -530,7 +506,7 @@ export function Appointments() {
               <input className="input" type="date" min={todayISO()} value={date} onChange={(e) => setDate(e.target.value)} />
             </Field>
             <div className="field" role="group" aria-labelledby="slot-label">
-              <span id="slot-label" className="lbl">Time</span>
+              <span id="slot-label" className="field-label">Time</span>
               {!date
                 ? <small>Choose a date to see the free times.</small>
                 : slots === null ? <Loading />

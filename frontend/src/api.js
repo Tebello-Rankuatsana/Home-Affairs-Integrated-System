@@ -160,23 +160,11 @@ export const normalizeAppt = (a) => {
 
 export const api = {
   auth: {
-    // --- Legacy OTP login (kept for citizens without a password) ---
+    // Citizens sign in with OTP. Accounts are created by Home Affairs officers
+    // via POST /citizens — there is no password login or self-registration
+    // endpoint on this backend.
     requestOtp: (nationalId) => post('/auth/otp/request', { nationalId }),
     verifyOtp: (nationalId, code) => post('/auth/otp/verify', { nationalId, code }),
-
-    // --- New: password-based citizen login ---
-    login: (nationalId, password) => post('/auth/login', { nationalId, password }),
-
-    // --- New: citizen self-registration ---
-    // body: { fullName, dateOfBirth, email, phone, password, securityQuestion,
-    //         securityAnswer, hasId, nationalId?, birthCertificateNumber?,
-    //         placeOfBirth?, address?, idUpload? }
-    register: (body) => post('/auth/register', body),
-
-    // --- New: password recovery request (email or SMS) ---
-    // body: { channel: 'email' | 'sms', contact }
-    recover: (body) => post('/auth/recover', body),
-
     staffLogin: (email, password) => post('/auth/staff/login', { email, password }),
     logout: () => post('/auth/logout', {}),
   },

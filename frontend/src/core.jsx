@@ -11,16 +11,6 @@ import {
 } from './api.js';
 import { humanize } from './format.js';
 
-// ---------------------------------------------------------------------------
-// Identity helpers
-// ---------------------------------------------------------------------------
-// Services a temporary-ID holder is allowed to use. Everything else is
-// blocked until the citizen upgrades to a full national ID.
-export const SELF_SERVICE = ['ID_APPLICATION', 'BIRTH_CERTIFICATE'];
-export const hasFullId = (user) => !!user && !user.temporaryId;
-export const canAccessService = (user, serviceCode) =>
-  hasFullId(user) || SELF_SERVICE.includes(serviceCode);
-
 // Icons
 const ICONS = {
   check: <polyline points="20 6 9 17 4 12" />,
@@ -62,6 +52,10 @@ const ICONS = {
   help: <><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></>,
   eye: <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></>,
   'eye-off': <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></>,
+  user: <><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></>,
+  briefcase: <><rect x="2" y="7" width="20" height="14" rx="2" ry="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></>,
+  mail: <><rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" /></>,
+  phone: <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />,
 };
 
 export const Icon = ({ name, size = 16, className = '' }) => (
@@ -128,7 +122,7 @@ const T = {
   },
 };
 
-// Nav for each role. Citizens with a temporary ID see a reduced menu.
+// Nav for each role.
 const NAV = {
   citizen: [
     ['/app', 'home', 'layout'],
@@ -137,13 +131,6 @@ const NAV = {
     ['/app/appointments', 'appts', 'calendar'],
     ['/app/notifications', 'notes', 'bell'],
     ['/app/departments', 'departments', 'building'],
-    ['/app/about', 'about', 'info'],
-  ],
-  citizenTemp: [
-    ['/app', 'home', 'layout'],
-    ['/app/services', 'services', 'grid'],
-    ['/app/applications', 'apps', 'file'],
-    ['/app/notifications', 'notes', 'bell'],
     ['/app/about', 'about', 'info'],
   ],
   staff: [
@@ -183,8 +170,6 @@ const toUser = (s) => {
       firstName: u.firstName ?? '',
       name: `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() || u.nationalId || 'Citizen',
       nid: u.nationalId,
-      temporaryId: !!u.temporaryId,
-      temporaryIdExpiresAt: u.temporaryIdExpiresAt ?? null,
     };
   }
   return {
@@ -289,15 +274,8 @@ export function Provider({ children }) {
     setSession(s);
   };
 
-  // Citizen login by password (new) OR OTP (legacy)
   const login = async (nationalId, code) => begin(await api.auth.verifyOtp(nationalId, code));
-  const loginWithPassword = async (nationalId, password) =>
-    begin(await api.auth.login(nationalId, password));
   const staffLogin = async (email, password) => begin(await api.auth.staffLogin(email, password));
-  // Citizen self-registration (new)
-  const registerCitizen = async (body) => begin(await api.auth.register(body));
-  // Password recovery request (new)
-  const requestRecovery = async (body) => api.auth.recover(body);
 
   const logout = async () => {
     try { await api.auth.logout(); } catch { /* token may already be invalid */ }
@@ -318,10 +296,8 @@ export function Provider({ children }) {
     services, departments, catalogReady,
     apps, appsReady, notes, docs, profile, toast,
     t, deptName, svcByCode,
-    login, loginWithPassword, registerCitizen, requestRecovery,
-    staffLogin, logout, flash, markAllRead,
+    login, staffLogin, logout, flash, markAllRead,
     refreshApps, refreshNotes, refreshDocs,
-    hasFullId, canAccessService, SELF_SERVICE,
   };
   return <Ctx.Provider value={v}>{children}</Ctx.Provider>;
 }
@@ -355,7 +331,10 @@ export const Card = ({ title, action, children }) => (
 
 export const Field = ({ label, hint, error, children }) => (
   <div className="field">
-    <label>{label}{children}</label>
+    <label>
+      <span className="field-label">{label}</span>
+      {children}
+    </label>
     {hint && <small>{hint}</small>}
     {error && <p className="err" role="alert">{error}</p>}
   </div>
@@ -399,16 +378,14 @@ export const Loading = ({ text = 'Loading…' }) => (
 export function Shell() {
   const { user, logout, t, lang, setLang, textScale, setTextScale, notes, toast, deptName } = useApp();
   const unread = notes.filter((n) => !n.readAt).length;
-  const roleLabel = user.temporaryId
-    ? 'Temporary ID holder'
-    : {
-        citizen: 'Citizen',
-        officer: 'Home Affairs officer',
-        admin: 'Administrator',
-        staff: deptName(user.dept),
-      }[user.role];
+  const roleLabel = {
+    citizen: 'Citizen',
+    officer: 'Home Affairs officer',
+    admin: 'Administrator',
+    staff: deptName(user.dept),
+  }[user.role];
   const adjustTextScale = (delta) => setTextScale((scale) => Math.min(1, Math.max(-1, scale + delta)));
-  const navItems = user.role === 'citizen' && user.temporaryId ? NAV.citizenTemp : NAV[user.role];
+  const navItems = NAV[user.role];
 
   return (
     <div className={'shell' + (textScale === 1 ? ' big' : textScale === -1 ? ' small' : '')}>
