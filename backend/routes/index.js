@@ -40,6 +40,13 @@ router.get('/receipts/verify/:receiptNumber', publicLimiter, receipts.verify);
 router.get('/services', catalog.services);
 router.get('/departments', catalog.departments);
 
+router.post('/auth/otp/request', otpLimiter, auth.requestOtp);
+router.post('/auth/otp/verify', authLimiter, auth.verifyOtp);
+router.post('/auth/staff/login', authLimiter, auth.staffLogin);
+router.post('/auth/register', authLimiter, auth.register); // <--- ADD THIS LINE
+
+router.get('/receipts/verify/:receiptNumber', publicLimiter, receipts.verify);
+
 // Everything below requires a valid bearer token
 
 router.use(authenticate);

@@ -26,3 +26,23 @@ export async function logout(req, res) {
   if (!token) throw httpError(401, 'Missing token');
   res.json(await auth.logout(ctx(req), token));
 }
+
+// Add this to backend/controllers/authController.js
+export async function register(req, res) {
+  const body = z.object({
+    fullName: z.string().min(2).max(150),
+    dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    email: z.string().email().optional(),
+    phone: z.string().min(7).max(20).optional(),
+    password: z.string().min(8),
+    securityQuestion: z.string().optional(),
+    securityAnswer: z.string().optional(),
+    hasId: z.boolean().optional(),
+    nationalId: z.string().optional(),
+    birthCertificateNumber: z.string().optional(),
+    placeOfBirth: z.string().optional(),
+    address: z.string().optional(),
+  }).parse(req.body);
+
+  res.status(201).json(await auth.registerCitizen(ctx(req), body));
+}

@@ -1,7 +1,4 @@
 // Core store, icons, translations, shared UI kit, and the app shell.
-// Provider talks to the backend through api.js. Every page reads state
-// from useApp().
-
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import coatOfArms from '../images/coat-of-arms-of-lesotho-seeklogo.png';
@@ -10,6 +7,12 @@ import {
   normalizeService, saveSession, setOnUnauthorized, setToken,
 } from './api.js';
 import { humanize } from './format.js';
+
+// Identity helpers
+export const SELF_SERVICE = ['ID_APPLICATION', 'BIRTH_CERTIFICATE'];
+export const hasFullId = (user) => !!user && !user.temporaryId;
+export const canAccessService = (user, serviceCode) =>
+  hasFullId(user) || SELF_SERVICE.includes(serviceCode);
 
 // Icons
 const ICONS = {
@@ -133,6 +136,13 @@ const NAV = {
     ['/app/departments', 'departments', 'building'],
     ['/app/about', 'about', 'info'],
   ],
+  citizenTemp: [
+    ['/app', 'home', 'layout'],
+    ['/app/services', 'services', 'grid'],
+    ['/app/applications', 'apps', 'file'],
+    ['/app/notifications', 'notes', 'bell'],
+    ['/app/about', 'about', 'info'],
+  ],
   staff: [
     ['/app', 'queue', 'inbox'],
     ['/app/appointments', 'appts', 'calendar'],
@@ -170,6 +180,8 @@ const toUser = (s) => {
       firstName: u.firstName ?? '',
       name: `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() || u.nationalId || 'Citizen',
       nid: u.nationalId,
+      temporaryId: !!u.temporaryId,
+      temporaryIdExpiresAt: u.temporaryIdExpiresAt ?? null,
     };
   }
   return {
@@ -274,8 +286,15 @@ export function Provider({ children }) {
     setSession(s);
   };
 
+  // Citizen login by password OR OTP
   const login = async (nationalId, code) => begin(await api.auth.verifyOtp(nationalId, code));
+  const loginWithPassword = async (nationalId, password) =>
+    begin(await api.auth.login(nationalId, password));
   const staffLogin = async (email, password) => begin(await api.auth.staffLogin(email, password));
+  // Citizen self-registration
+  const registerCitizen = async (body) => begin(await api.auth.register(body));
+  // Password recovery request
+  const requestRecovery = async (body) => api.auth.recover(body);
 
   const logout = async () => {
     try { await api.auth.logout(); } catch { /* token may already be invalid */ }
@@ -296,8 +315,10 @@ export function Provider({ children }) {
     services, departments, catalogReady,
     apps, appsReady, notes, docs, profile, toast,
     t, deptName, svcByCode,
-    login, staffLogin, logout, flash, markAllRead,
+    login, loginWithPassword, registerCitizen, requestRecovery,
+    staffLogin, logout, flash, markAllRead,
     refreshApps, refreshNotes, refreshDocs,
+    hasFullId, canAccessService, SELF_SERVICE,
   };
   return <Ctx.Provider value={v}>{children}</Ctx.Provider>;
 }
@@ -378,14 +399,16 @@ export const Loading = ({ text = 'Loading…' }) => (
 export function Shell() {
   const { user, logout, t, lang, setLang, textScale, setTextScale, notes, toast, deptName } = useApp();
   const unread = notes.filter((n) => !n.readAt).length;
-  const roleLabel = {
-    citizen: 'Citizen',
-    officer: 'Home Affairs officer',
-    admin: 'Administrator',
-    staff: deptName(user.dept),
-  }[user.role];
+  const roleLabel = user.temporaryId
+    ? 'Temporary ID holder'
+    : {
+        citizen: 'Citizen',
+        officer: 'Home Affairs officer',
+        admin: 'Administrator',
+        staff: deptName(user.dept),
+      }[user.role];
   const adjustTextScale = (delta) => setTextScale((scale) => Math.min(1, Math.max(-1, scale + delta)));
-  const navItems = NAV[user.role];
+  const navItems = user.role === 'citizen' && user.temporaryId ? NAV.citizenTemp : NAV[user.role];
 
   return (
     <div className={'shell' + (textScale === 1 ? ' big' : textScale === -1 ? ' small' : '')}>

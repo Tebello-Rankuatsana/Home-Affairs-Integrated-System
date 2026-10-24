@@ -31,7 +31,7 @@ export function Login() {
         </ul>
       </aside>
       <main id="main">
-        <div className="card-b card" style={{ maxWidth: 480, width: '100%' }}>
+        <div className="auth-card">
           <h2>
             {tab === 'signin' && 'Sign in'}
             {tab === 'register' && 'Create an account'}
@@ -106,7 +106,6 @@ function SignIn({ onDone, login, loginWithPassword, onForgot }) {
     return run(async () => { await login(id.trim(), otp); onDone(); });
   };
 
-  // staffLogin is passed via useApp in Login — grab from context here too
   const { staffLogin: loginStaff } = useApp();
 
   return (

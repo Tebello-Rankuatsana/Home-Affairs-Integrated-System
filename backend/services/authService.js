@@ -12,6 +12,7 @@ import { t, languageFor } from '../i18n.js';
 const GENERIC_OTP_MESSAGE = 'If this ID is registered, a one-time code has been sent.';
 
 export function signToken({ type, id, role, departmentCode = null }) {
+  if (!config.jwtSecret) throw new Error('JWT_SECRET is missing from .env');
   const jti = crypto.randomUUID();
   return jwt.sign(
     { type, role, departmentCode, jti },
@@ -24,9 +25,112 @@ function actorOf({ type, id, role, departmentCode = null }) {
   return { type, id: String(id), role, departmentCode };
 }
 
+function splitName(fullName) {
+  const parts = String(fullName || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { firstName: '', lastName: '' };
+  if (parts.length === 1) return { firstName: parts[0], lastName: parts[0] };
+  return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
+}
+
+// --- Citizen Registration ---
+export async function registerCitizen(ctx, data) {
+  try {
+    if (data.nationalId) {
+      const existing = await prisma.citizen.findUnique({
+        where: { nationalIdNumber: data.nationalId },
+      });
+      if (existing) throw httpError(409, 'A citizen with this National ID already exists');
+    }
+
+    const passwordHash = await bcrypt.hash(data.password, 10);
+    const { firstName, lastName } = splitName(data.fullName);
+    const finalNationalId = data.nationalId || `TMP-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+    // USE NESTED WRITES INSTEAD OF $transaction to prevent timeouts
+    const citizen = await prisma.citizen.create({
+      data: {
+        nationalIdNumber: finalNationalId,
+        firstName: firstName || 'Unknown',
+        lastName: lastName || 'Unknown',
+        dateOfBirth: new Date(`${data.dateOfBirth}T00:00:00.000Z`),
+        gender: 'UNSPECIFIED',
+        citizenshipStatus: 'Lesotho',
+        contactEmail: data.email || null,
+        phone: data.phone || null,
+        address: data.address || null,
+        profile: {
+          create: {
+            preferredLanguage: 'en',
+            accountStatus: 'ACTIVE',
+          },
+        },
+        credentials: {
+          create: {
+            credentialType: 'PASSWORD',
+            credentialHash: passwordHash,
+            activeStatus: true,
+          },
+        },
+      },
+    });
+
+    const actor = actorOf({ type: 'CITIZEN', id: citizen.citizenId, role: 'CITIZEN' });
+    await audit(ctx, { action: 'REGISTER', resourceType: 'citizen', resourceId: citizen.citizenId }, actor);
+
+    return {
+      token: signToken(actor),
+      role: 'CITIZEN',
+      user: {
+        id: String(citizen.citizenId),
+        nationalId: citizen.nationalIdNumber,
+        firstName: citizen.firstName,
+        lastName: citizen.lastName,
+        temporaryId: !data.nationalId,
+      },
+    };
+  } catch (error) {
+    console.error("Registration Database Error:", error);
+    if (error.status) throw error;
+    throw httpError(500, `Database error: ${error.message}`);
+  }
+}
+
+// --- Citizen Password Login ---
+export async function citizenLogin(ctx, { nationalId, password }) {
+  const citizen = await prisma.citizen.findUnique({
+    where: { nationalIdNumber: nationalId },
+  });
+  if (!citizen) throw httpError(401, 'Invalid National ID or password');
+
+  const credential = await prisma.authenticationCredential.findFirst({
+    where: { citizenId: citizen.citizenId, activeStatus: true },
+  });
+  
+  const ok = credential?.credentialHash
+    ? await bcrypt.compare(password, credential.credentialHash)
+    : false;
+    
+  if (!ok) throw httpError(401, 'Invalid National ID or password');
+
+  const actor = actorOf({ type: 'CITIZEN', id: citizen.citizenId, role: 'CITIZEN' });
+  await audit(ctx, { action: 'LOGIN', resourceType: 'citizen', resourceId: citizen.citizenId }, actor);
+
+  return {
+    token: signToken(actor),
+    role: 'CITIZEN',
+    user: {
+      id: String(citizen.citizenId),
+      nationalId: citizen.nationalIdNumber,
+      firstName: citizen.firstName,
+      lastName: citizen.lastName,
+      temporaryId: citizen.nationalIdNumber.startsWith('TMP-'),
+    },
+  };
+}
+
+// --- Existing OTP Flow ---
 export async function requestOtp(ctx, nationalId) {
   const body = { message: GENERIC_OTP_MESSAGE };
-
   if (await store.get(otpCooldownKey(nationalId))) return body;
   await store.set(otpCooldownKey(nationalId), '1', config.otpCooldownSeconds);
 
@@ -54,7 +158,6 @@ export async function requestOtp(ctx, nationalId) {
     }
     if (!config.isProd || config.demoMode) body.devOtp = code;
   }
-
   return body;
 }
 
@@ -101,6 +204,7 @@ export async function verifyOtp(ctx, { nationalId, code }) {
       nationalId: citizen.nationalIdNumber,
       firstName: citizen.firstName,
       lastName: citizen.lastName,
+      temporaryId: citizen.nationalIdNumber.startsWith('TMP-'),
     },
   };
 }
@@ -108,10 +212,7 @@ export async function verifyOtp(ctx, { nationalId, code }) {
 export async function staffLogin(ctx, { email, password }) {
   const staff = await prisma.staff.findUnique({
     where: { email },
-    include: {
-      department: true,
-      staffRoles: { include: { role: true } },
-    },
+    include: { department: true, staffRoles: { include: { role: true } } },
   });
   if (!staff) throw httpError(401, 'Invalid email or password');
 
@@ -126,12 +227,7 @@ export async function staffLogin(ctx, { email, password }) {
   const roleName = staff.staffRoles[0]?.role?.roleName || 'DEPARTMENT_STAFF';
   const departmentCode = staff.department?.departmentCode ?? null;
 
-  const actor = actorOf({
-    type: 'STAFF',
-    id: staff.staffId,
-    role: roleName,
-    departmentCode,
-  });
+  const actor = actorOf({ type: 'STAFF', id: staff.staffId, role: roleName, departmentCode });
   await audit(ctx, { action: 'LOGIN', resourceType: 'staff', resourceId: staff.staffId }, actor);
 
   if (credential) {

@@ -1,7 +1,4 @@
 // The single network entry point for the whole app.
-// Exposes api.* endpoints, session persistence, token management, and the
-// normalizers that turn raw backend rows into what the pages consume.
-
 const BASE = (import.meta.env?.VITE_API_URL ?? '').replace(/\/$/, '');
 const SESSION_KEY = 'govserve.session';
 
@@ -61,7 +58,6 @@ async function request(method, path, { body, query, isForm } = {}) {
   const text = await res.text();
   const data = text ? safeParse(text) : null;
 
-  // A 401 from /auth/* is just wrong credentials, not an expired session.
   const isAuthPath = path.startsWith('/auth/');
   if (res.status === 401 && onUnauthorized && !isAuthPath) onUnauthorized();
   if (!res.ok) throw new ApiError(res.status, data ?? {});
@@ -75,7 +71,6 @@ const put = (p, b, o) => request('PUT', p, { ...o, body: b });
 const del = (p, o) => request('DELETE', p, o);
 const postForm = (p, f, o) => request('POST', p, { ...o, body: f, isForm: true });
 
-// Constants the modules import
 export const HOME_AFFAIRS = 'HOME_AFFAIRS';
 
 export const PAYMENT_METHODS = [
@@ -94,7 +89,6 @@ export const DOC_DECISION = {
   resubmit: 'NEEDS_RESUBMISSION',
 };
 
-// Normalizes list-shaped responses so pages can safely .map over them
 export const asList = (x) => {
   if (Array.isArray(x)) return x;
   if (Array.isArray(x?.items)) return x.items;
@@ -120,7 +114,6 @@ export const normalizeService = (s) => ({
 });
 
 export const normalizeDept = (d) => ({ code: d.code, name: d.name });
-
 export const normalizeProfile = (p) => p ? { ...p, dateOfBirth: iso10(p.dateOfBirth) } : null;
 
 export const normalizeDoc = (d) => {
@@ -160,11 +153,19 @@ export const normalizeAppt = (a) => {
 
 export const api = {
   auth: {
-    // Citizens sign in with OTP. Accounts are created by Home Affairs officers
-    // via POST /citizens — there is no password login or self-registration
-    // endpoint on this backend.
+    // Legacy OTP login (kept for citizens without a password)
     requestOtp: (nationalId) => post('/auth/otp/request', { nationalId }),
     verifyOtp: (nationalId, code) => post('/auth/otp/verify', { nationalId, code }),
+
+    // Password-based citizen login
+    login: (nationalId, password) => post('/auth/login', { nationalId, password }),
+
+    // Citizen self-registration
+    register: (body) => post('/auth/register', body),
+
+    // Password recovery request
+    recover: (body) => post('/auth/recover', body),
+
     staffLogin: (email, password) => post('/auth/staff/login', { email, password }),
     logout: () => post('/auth/logout', {}),
   },
@@ -244,9 +245,7 @@ export const api = {
     verify: (receiptNumber) => get(`/receipts/verify/${receiptNumber}`),
   },
 
-  identity: {
-    verify: (body) => post('/identity/verify', body),
-  },
+  identity: { verify: (body) => post('/identity/verify', body) },
 
   citizens: {
     create: (body) => post('/citizens', body),
