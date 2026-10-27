@@ -1,6 +1,4 @@
-import pkg from '@prisma/client';
-import { PrismaPg } from '@prisma/adapter-pg';
-import pg from 'pg';
+import { prisma } from './db.js';
 import { createApp } from './app.js';
 import { config } from './config.js';
 import { startWorker } from './services/queue.js';
@@ -8,12 +6,6 @@ import { startWorker } from './services/queue.js';
 BigInt.prototype.toJSON = function () {
   return this.toString();
 };
-
-const { PrismaClient } = pkg;
-
-const pool = new pg.Pool({ connectionString: config.databaseUrl });
-const adapter = new PrismaPg(pool);
-const prisma = new PrismaClient({ adapter });
 
 async function main() {
   try {

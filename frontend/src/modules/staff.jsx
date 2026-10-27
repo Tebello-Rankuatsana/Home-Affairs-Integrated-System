@@ -1,4 +1,4 @@
-// STAFF MODULE: department case queue, application review with minimum-necessary identity data, and the appointment queue.
+// STAFF MODULE
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useApp, Card, Badge, ApptBadge, DocBadge, Page, Field, Loading, Icon, FIELD_LABELS, TERMINAL, statusLabel } from '../core.jsx';
@@ -31,7 +31,7 @@ export function Review() {
   const { user, refreshApps, flash, deptName } = useApp();
   const nav = useNavigate();
   const [a, setA] = useState(null);
-  const [state, setState] = useState('loading'); // 'loading' | 'ok' | 'missing'
+  const [state, setState] = useState('loading');
   const [ident, setIdent] = useState(null);
   const [identErr, setIdentErr] = useState('');
   const [note, setNote] = useState('');
@@ -42,8 +42,11 @@ export function Review() {
     try { setA(await api.applications.get(id)); setState('ok'); } catch { setState('missing'); }
   }, [id]);
   useEffect(() => { load(); }, [load]);
-  // Opening a case asks Home Affairs for the identity; the backend records every such request in the audit log.
-  useEffect(() => { setIdent(null); setIdentErr(''); api.identity.verify({ applicationId: id }).then(setIdent).catch((e) => setIdentErr(e.message)); }, [id]);
+  
+  useEffect(() => { 
+    setIdent(null); setIdentErr(''); 
+    api.identity.verify({ applicationId: id }).then(setIdent).catch((e) => setIdentErr(e.message)); 
+  }, [id]);
 
   if (state === 'loading') return <Loading />;
   if (state === 'missing' || !a) return <p>This case is not available to your department. <Link to="/app">Back to queue</Link></p>;
@@ -70,6 +73,7 @@ export function Review() {
   return (
     <Page title={`${a.reference} · ${a.service?.name}`} sub={`${a.department?.name ?? deptName(user.dept)}${a.assignedTo ? ' · Assigned to ' + a.assignedTo.name : ''}`}>
       <p><Badge s={a.status} /></p>
+      
       <div className="grid2">
         <Card title="Verified identity (from Home Affairs)">
           {identErr ? <p className="callout err" role="alert"><Icon name="alert" size={20} />{identErr}</p> : !ident ? <Loading /> : (<>
@@ -84,21 +88,38 @@ export function Review() {
             <p className="muted"><small>Showing only the fields your department is authorised to see. This view has been logged.</small></p>
           </>)}
         </Card>
-        <Card title="Documents">
-          {a.documents?.map((d) => (
-            <div className="row" key={d.id}>
-              <b>{humanize(d.type)}<small>{d.originalName}</small></b>
-              <div className="row-actions"><DocBadge d={d} />
-                <button className="btn sm" onClick={() => download(d)} aria-label={`Download ${humanize(d.type)}`}><Icon name="download" size={14} /></button>
-                {!closed && <><button className="btn sm" onClick={() => reviewDoc(d, DOC_DECISION.verify)}><Icon name="check" size={14} />Verify</button>
-                  <button className="btn sm" onClick={() => reviewDoc(d, DOC_DECISION.reject)}><Icon name="x" size={14} />Reject</button></>}
-              </div>
-            </div>
-          ))}
-          {!a.documents?.length && <p className="muted">No documents attached.</p>}
-          {a.missingDocuments?.length > 0 && <p className="callout warn"><Icon name="alert" size={18} />Missing: {a.missingDocuments.map(humanize).join(', ')}</p>}
+
+        <Card title="Application Details">
+          {!a.formData || Object.keys(a.formData).length === 0 ? (
+            <p className="muted">No additional details provided for this service.</p>
+          ) : (
+            <dl className="kv">
+              {Object.entries(a.formData).map(([key, value]) => (
+                <div key={key}>
+                  <dt>{humanize(key)}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
         </Card>
       </div>
+
+      <Card title="Documents">
+        {a.documents?.map((d) => (
+          <div className="row" key={d.id}>
+            <b>{humanize(d.type)}<small>{d.originalName}</small></b>
+            <div className="row-actions"><DocBadge d={d} />
+              <button className="btn sm" onClick={() => download(d)} aria-label={`Download ${humanize(d.type)}`}><Icon name="download" size={14} /></button>
+              {!closed && <><button className="btn sm" onClick={() => reviewDoc(d, DOC_DECISION.verify)}><Icon name="check" size={14} />Verify</button>
+                <button className="btn sm" onClick={() => reviewDoc(d, DOC_DECISION.reject)}><Icon name="x" size={14} />Reject</button></>}
+            </div>
+          </div>
+        ))}
+        {!a.documents?.length && <p className="muted">No documents attached.</p>}
+        {a.missingDocuments?.length > 0 && <p className="callout warn"><Icon name="alert" size={18} />Missing: {a.missingDocuments.map(humanize).join(', ')}</p>}
+      </Card>
+
       <Card title="Decision">
         {closed ? <p className="muted">This case is closed ({statusLabel(a.status)}).</p> : (<>
           <Field label="Note to citizen" error={err} hint="Required when rejecting or requesting more information."><textarea className="input" rows="3" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
@@ -116,16 +137,24 @@ export function Review() {
 
 export function StaffAppointments() {
   const { user, flash, deptName } = useApp();
-  const [date, setDate] = useState(todayISO());
+  const [date, setDate] = useState(''); 
   const [list, setList] = useState(null);
   const [waiting, setWaiting] = useState([]);
 
   const load = useCallback(async () => {
     try {
-      const [l, q] = await Promise.all([api.appointments.list({ date }), api.appointments.queue(date)]);
-      setList(asList(l).map(normalizeAppt)); setWaiting(q?.waiting ?? []);
-    } catch (e) { setList([]); flash(e.message, 'error'); }
+      const [l, q] = await Promise.all([
+        api.appointments.list(date ? { date } : {}), 
+        api.appointments.queue(date || undefined)
+      ]);
+      setList(asList(l).map(normalizeAppt)); 
+      setWaiting(q?.waiting ?? []);
+    } catch (e) { 
+      setList([]); 
+      flash(e.message, 'error'); 
+    }
   }, [date, flash]);
+  
   useEffect(() => { setList(null); load(); }, [load]);
 
   const run = async (fn, ok) => {
@@ -135,24 +164,29 @@ export function StaffAppointments() {
   return (
     <Page title={`${deptName(user.dept)} · Appointments`} sub="Check visitors in, then call the next person from the queue.">
       <div className="filters">
-        <input className="input" type="date" aria-label="Date" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} />
-        <button className="btn primary" onClick={() => run(() => api.appointments.callNext(date), (r) => `Called queue no. ${r.called.queueNumber}${r.called.citizen ? ' · ' + r.called.citizen : ''}`)}><Icon name="arrow-right" size={16} />Call next</button>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontWeight: 600 }}>Filter by Date:</span>
+          <input className="input" type="date" aria-label="Date" value={date} onChange={(e) => setDate(e.target.value)} style={{ margin: 0 }} />
+          {date && <button className="btn sm" onClick={() => setDate('')}>Clear (Show All)</button>}
+        </label>
+        
+        <button className="btn primary" onClick={() => run(() => api.appointments.callNext(date || undefined), (r) => `Called queue no. ${r.called.queueNumber}${r.called.citizen ? ' · ' + r.called.citizen : ''}`)}><Icon name="arrow-right" size={16} />Call next</button>
         <button className="btn" onClick={load}><Icon name="refresh" size={16} />Refresh</button>
       </div>
       <Card title={`Waiting in the queue (${waiting.length})`}>
         {waiting.map((w) => <div className="row" key={w.id}><div><b>No. {w.queueNumber} · {w.citizen}</b><small>{w.reference} · checked in {fmtTime(w.checkedInAt)}</small></div></div>)}
         {!waiting.length && <p className="muted">Nobody is waiting right now.</p>}
       </Card>
-      <Card title="Appointments">
+      <Card title={`Appointments ${date ? `on ${fmtDate(date)}` : '(All upcoming)'}`}>
         {list === null ? <Loading /> : (
-          <table className="table"><thead><tr><th>Time</th><th>Visitor</th><th>Service</th><th>Reference</th><th>Status</th><th>Actions</th></tr></thead>
+          <table className="table"><thead><tr><th>Date/Time</th><th>Visitor</th><th>Service</th><th>Reference</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>{list.map((a) => (
-              <tr key={a.id}><td>{fmtTime(a.startsAt)}</td><td>{a.visitor}</td><td>{a.service ?? '—'}</td><td>{a.reference}</td><td><ApptBadge s={a.status} /></td>
+              <tr key={a.id}><td>{fmtDateTime(a.startsAt)}</td><td>{a.visitor}</td><td>{a.service ?? '—'}</td><td>{a.reference}</td><td><ApptBadge s={a.status} /></td>
                 <td>{a.status === 'BOOKED' && <><button className="btn" onClick={() => run(() => api.appointments.checkIn(a.id), (r) => `Checked in · queue no. ${r.queueNumber}`)}><Icon name="check" size={14} />Check in</button>
                   <button className="btn" onClick={() => run(() => api.appointments.noShow(a.id), 'Marked as no-show')}><Icon name="x" size={14} />No-show</button></>}
                   {a.status === 'CHECKED_IN' && <button className="btn" onClick={() => run(() => api.appointments.complete(a.id), 'Appointment completed')}><Icon name="check-circle" size={14} />Complete</button>}</td></tr>
             ))}
-              {!list.length && <tr><td colSpan="6" className="muted">No appointments on {fmtDate(date)}.</td></tr>}</tbody></table>
+              {!list.length && <tr><td colSpan="6" className="muted">No appointments found.</td></tr>}</tbody></table>
         )}
       </Card>
     </Page>

@@ -1,8 +1,5 @@
 import { prisma } from '../db.js';
 
-// Prisma columns are departmentCode and departmentName, but the API contract
-// exposes them as code and name. Also unwraps Decimal to number so the
-// frontend can compare fee > 0 safely.
 export async function listServices() {
   const rows = await prisma.serviceType.findMany({
     include: { department: { select: { departmentCode: true, departmentName: true } } },
@@ -16,6 +13,7 @@ export async function listServices() {
     currency: s.currency ?? 'LSL',
     processingTimeDays: s.processingTimeDays ?? null,
     requiredDocuments: s.requiredDocuments ?? [],
+    formSchema: s.formSchema ?? [],
     department: {
       code: s.department.departmentCode,
       name: s.department.departmentName,
