@@ -33,28 +33,48 @@ model Department {
 }
 
 model Citizen {
-  citizenId         BigInt                     @id @default(autoincrement()) @map("citizen_id")
-  nationalIdNumber  String                     @unique @map("national_id_number") @db.VarChar(50)
-  firstName         String                     @map("first_name") @db.VarChar(100)
-  lastName          String                     @map("last_name") @db.VarChar(100)
-  dateOfBirth       DateTime                   @map("date_of_birth") @db.Date
-  gender            String                     @db.VarChar(20)
-  citizenshipStatus String?                    @map("citizenship_status") @db.VarChar(50)
-  contactEmail      String?                    @map("contact_email") @db.VarChar(150)
-  phone             String?                    @db.VarChar(20)
+  citizenId         BigInt    @id @default(autoincrement()) @map("citizen_id")
+  nationalIdNumber  String    @unique @map("national_id_number") @db.VarChar(50)
+  firstName         String    @map("first_name") @db.VarChar(100)
+  lastName          String    @map("last_name") @db.VarChar(100)
+  dateOfBirth       DateTime  @map("date_of_birth") @db.Date
+  gender            String    @db.VarChar(20)
+  citizenshipStatus String?   @map("citizenship_status") @db.VarChar(50)
+  contactEmail      String?   @map("contact_email") @db.VarChar(150)
+  phone             String?   @db.VarChar(20)
   address           String?
-  creationTime      DateTime?                  @default(now()) @map("creation_time") @db.Timestamptz(6)
-  updatedAt         DateTime?                  @default(now()) @map("updated_at") @db.Timestamptz(6)
-  applications      Application[]
-  appointments      Appointment[]
-  credentials       AuthenticationCredential[]
-  documents         Document[]
-  profile           CitizenProfile?
-  identityRequests  IdentityRequest[]
-  notifications     Notification[]
-  payments          Payment[]
-  receipts          Receipt[]
+  creationTime      DateTime? @default(now()) @map("creation_time") @db.Timestamptz(6)
+  updatedAt         DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
 
+  // NEW: temporary-ID flow — the whole reason for registration without a real ID
+  temporaryId           Boolean   @default(false) @map("temporary_id")
+  temporaryIdExpiresAt  DateTime? @map("temporary_id_expires_at") @db.Timestamptz(6)
+
+  // NEW: registration state
+  registrationStatus     String  @default("ACTIVE") @map("registration_status") @db.VarChar(30)
+  birthCertificateNumber String? @map("birth_certificate_number") @db.VarChar(50)
+  placeOfBirth           String? @map("place_of_birth") @db.VarChar(150)
+  parentGuardianNames    String? @map("parent_guardian_names")
+
+  // NEW: password recovery
+  securityQuestion   String? @map("security_question") @db.VarChar(255)
+  securityAnswerHash String? @map("security_answer_hash") @db.VarChar(255)
+
+  // NEW: distinguishes legacy OTP-only accounts from password accounts
+  passwordSet Boolean @default(false) @map("password_set")
+
+  applications     Application[]
+  appointments     Appointment[]
+  credentials      AuthenticationCredential[]
+  documents        Document[]
+  profile          CitizenProfile?
+  identityRequests IdentityRequest[]
+  notifications    Notification[]
+  payments         Payment[]
+  receipts         Receipt[]
+
+  @@index([temporaryId])
+  @@index([registrationStatus])
   @@map("citizen")
 }
 
@@ -102,11 +122,16 @@ model AuthenticationCredential {
   activeStatus   Boolean?  @default(true) @map("active_status")
   createdAt      DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
   lastUsed       DateTime? @map("last_used") @db.Timestamptz(6)
-  citizen        Citizen?  @relation(fields: [citizenId], references: [citizenId], onDelete: Cascade, onUpdate: NoAction, map: "fk_auth_citizen")
-  staff          Staff?    @relation(fields: [staffId], references: [staffId], onDelete: Cascade, onUpdate: NoAction, map: "fk_auth_staff")
+
+  // NEW: expiry for OTP codes and recovery tokens
+  expiresAt DateTime? @map("expires_at") @db.Timestamptz(6)
+
+  citizen Citizen? @relation(fields: [citizenId], references: [citizenId], onDelete: Cascade, onUpdate: NoAction, map: "fk_auth_citizen")
+  staff   Staff?   @relation(fields: [staffId], references: [staffId], onDelete: Cascade, onUpdate: NoAction, map: "fk_auth_staff")
 
   @@index([citizenId])
   @@index([staffId])
+  @@index([credentialType, activeStatus])
   @@map("authentication_credentials")
 }
 
@@ -162,16 +187,21 @@ model DepartmentFieldScope {
 }
 
 model ServiceType {
-  serviceId          BigInt        @id @default(autoincrement()) @map("service_id")
-  departmentId       BigInt        @map("department_id")
-  name               String        @db.VarChar(150)
-  code               String        @unique @db.VarChar(30)
-  processingTimeDays Int?          @map("processing_time_days")
-  feeAmount          Decimal?      @map("fee_amount") @db.Decimal(12, 2)
-  currency           String?       @default("LSL") @db.VarChar(10)
-  availableOnline    Boolean?      @map("available_online")
-  requiredDocuments  String[]      @map("required_documents")
-  formSchema         Json?         @map("form_schema")
+  serviceId          BigInt    @id @default(autoincrement()) @map("service_id")
+  departmentId       BigInt    @map("department_id")
+  name               String    @db.VarChar(150)
+  code               String    @unique @db.VarChar(30)
+  processingTimeDays Int?      @map("processing_time_days")
+  feeAmount          Decimal?  @map("fee_amount") @db.Decimal(12, 2)
+  currency           String?   @default("LSL") @db.VarChar(10)
+  availableOnline    Boolean?  @map("available_online")
+  requiredDocuments  String[]  @map("required_documents")
+  formSchema         Json?     @map("form_schema")
+
+  // NEW: access level — "ANY_ID" | "FULL_ID" | "STAFF_ONLY"
+  accessLevel        String    @default("ANY_ID") @map("access_level") @db.VarChar(20)
+  helpContent        String?   @map("help_content")
+
   applications       Application[]
   appointments       Appointment[]
   department         Department    @relation(fields: [departmentId], references: [departmentId], onUpdate: NoAction, map: "fk_service_department")
@@ -262,6 +292,7 @@ model Document {
   verifier       Staff?                @relation(fields: [verifiedBy], references: [staffId], onUpdate: NoAction, map: "fk_document_verifier")
 
   @@index([citizenId])
+  @@index([documentType])
   @@map("citizen_document")
 }
 
