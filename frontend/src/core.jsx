@@ -10,7 +10,7 @@ import { humanize } from './format.js';
 
 // Identity helpers
 // TEMPORARY ID HOLDERS CAN ONLY APPLY FOR AN ID
-export const SELF_SERVICE = ['ID_APPLICATION']; 
+export const SELF_SERVICE = ['ID_APPLICATION'];
 export const hasFullId = (user) => !!user && !user.temporaryId;
 export const canAccessService = (user, serviceCode) =>
   hasFullId(user) || SELF_SERVICE.includes(serviceCode);
@@ -64,6 +64,8 @@ const ICONS = {
   'volume-2': <><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14" /></>,
   'volume-x': <><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><line x1="22" y1="9" x2="16" y2="15" /><line x1="16" y1="9" x2="22" y2="15" /></>,
   type: <><polyline points="4 7 4 4 20 4 20 7" /><line x1="9" y1="20" x2="15" y2="20" /><line x1="12" y1="4" x2="12" y2="20" /></>,
+  moon: <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />,
+  sun: <><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" /></>,
 };
 
 export const Icon = ({ name, size = 16, className = '' }) => (
@@ -209,12 +211,22 @@ export function Provider({ children }) {
     return s;
   });
   const [lang, setLang] = useState('en');
-  
+
   // Accessibility State
   const [textScale, setTextScale] = useState(0);
   const [highContrast, setHighContrast] = useState(false);
   const [dyslexiaFont, setDyslexiaFont] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+
+  // Dark mode state (persisted)
+  const [darkMode, setDarkMode] = useState(() => {
+    try { return localStorage.getItem('govserve.dark') === '1'; }
+    catch { return false; }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem('govserve.dark', darkMode ? '1' : '0'); } catch { /* ignore */ }
+  }, [darkMode]);
 
   const [services, setServices] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -323,11 +335,12 @@ export function Provider({ children }) {
   const svcByCode = (code) => services.find((s) => s.code === code);
 
   const v = {
-    user, lang, setLang, 
-    textScale, setTextScale, 
+    user, lang, setLang,
+    textScale, setTextScale,
     highContrast, setHighContrast,
     dyslexiaFont, setDyslexiaFont,
     isSpeaking, setIsSpeaking,
+    darkMode, setDarkMode,
     services, departments, catalogReady,
     apps, appsReady, notes, docs, profile, toast,
     t, deptName, svcByCode,
@@ -412,13 +425,14 @@ export const Loading = ({ text = 'Loading…' }) => (
 
 // App shell
 export function Shell() {
-  const { 
-    user, logout, t, lang, setLang, 
-    textScale, setTextScale, highContrast, setHighContrast, 
-    dyslexiaFont, setDyslexiaFont, isSpeaking, setIsSpeaking, 
-    notes, toast, deptName 
+  const {
+    user, logout, t, lang, setLang,
+    textScale, setTextScale, highContrast, setHighContrast,
+    dyslexiaFont, setDyslexiaFont, isSpeaking, setIsSpeaking,
+    darkMode, setDarkMode,
+    notes, toast, deptName
   } = useApp();
-  
+
   const location = useLocation();
   const [accessMenuOpen, setAccessMenuOpen] = useState(false);
 
@@ -431,7 +445,7 @@ export function Shell() {
         admin: 'Administrator',
         staff: deptName(user.dept),
       }[user.role];
-      
+
   const adjustTextScale = (delta) => setTextScale((scale) => Math.min(1, Math.max(-1, scale + delta)));
   const navItems = user.role === 'citizen' && user.temporaryId ? NAV.citizenTemp : NAV[user.role];
 
@@ -452,13 +466,13 @@ export function Shell() {
     stopSpeaking();
     const mainContent = document.getElementById('main');
     if (!mainContent) return;
-    
+
     const text = mainContent.innerText;
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = 1;
     utterance.pitch = 1;
     utterance.onend = () => setIsSpeaking(false);
-    
+
     setIsSpeaking(true);
     window.speechSynthesis.speak(utterance);
   };
@@ -467,7 +481,8 @@ export function Shell() {
     'shell',
     textScale === 1 ? 'big' : textScale === -1 ? 'small' : '',
     highContrast ? 'high-contrast' : '',
-    dyslexiaFont ? 'dyslexia-friendly' : ''
+    dyslexiaFont ? 'dyslexia-friendly' : '',
+    darkMode ? 'dark' : '',
   ].filter(Boolean).join(' ');
 
   return (
@@ -478,7 +493,7 @@ export function Shell() {
           <span className="brand-crest"><img src={coatOfArms} alt="Coat of arms of Lesotho" /></span>
           <div className="brand-copy"><b>GovServe Lesotho</b><small>Integrated Government Services</small></div>
         </div>
-        
+
         <div className="hdr-r">
           <div className="nav-section language">
             <button className="btn ghost light" type="button" onClick={() => setLang(lang === 'en' ? 'st' : 'en')} aria-label="Change language">
@@ -487,9 +502,9 @@ export function Shell() {
           </div>
 
           <div className="nav-section accessibility-menu-container">
-            <button 
-              className={'btn ghost light ' + (accessMenuOpen ? 'active' : '')} 
-              type="button" 
+            <button
+              className={'btn ghost light ' + (accessMenuOpen ? 'active' : '')}
+              type="button"
               onClick={() => setAccessMenuOpen(!accessMenuOpen)}
               aria-expanded={accessMenuOpen}
               aria-haspopup="true"
@@ -498,7 +513,7 @@ export function Shell() {
               <Icon name="accessibility" size={20} />
               <span className="hide-on-mobile">Accessibility</span>
             </button>
-            
+
             {accessMenuOpen && (
               <div className="access-dropdown" role="menu">
                 <div className="access-group">
@@ -508,7 +523,7 @@ export function Shell() {
                     <button className="btn sm" onClick={() => adjustTextScale(1)} aria-label="Increase text size"><Icon name="a-up" size={16} /> Larger</button>
                   </div>
                 </div>
-                
+
                 <div className="access-group">
                   <span className="access-label">Display</span>
                   <button className={'btn sm block ' + (highContrast ? 'primary' : '')} onClick={() => setHighContrast(!highContrast)} aria-pressed={highContrast}>
@@ -516,6 +531,9 @@ export function Shell() {
                   </button>
                   <button className={'btn sm block ' + (dyslexiaFont ? 'primary' : '')} onClick={() => setDyslexiaFont(!dyslexiaFont)} aria-pressed={dyslexiaFont}>
                     <Icon name="type" size={16} /> Dyslexia-Friendly Font
+                  </button>
+                  <button className={'btn sm block ' + (darkMode ? 'primary' : '')} onClick={() => setDarkMode(!darkMode)} aria-pressed={darkMode}>
+                    <Icon name={darkMode ? 'sun' : 'moon'} size={16} /> Dark Mode
                   </button>
                 </div>
 
