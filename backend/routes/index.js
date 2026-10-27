@@ -2,6 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import { authLimiter, otpLimiter, publicLimiter } from '../middleware/rateLimit.js';
+import { requireActiveCitizen } from '../middleware/requireFullId.js';
 import { config } from '../config.js';
 import * as auth from '../controllers/authController.js';
 import * as citizens from '../controllers/citizenController.js';
@@ -29,32 +30,32 @@ const ADMIN = requireRole('ADMIN');
 
 const router = Router();
 
+// ---------------------------------------------------------------------------
 // Public endpoints
+// ---------------------------------------------------------------------------
 
 router.post('/auth/otp/request', otpLimiter, auth.requestOtp);
 router.post('/auth/otp/verify', authLimiter, auth.verifyOtp);
 router.post('/auth/staff/login', authLimiter, auth.staffLogin);
+router.post('/auth/register', authLimiter, auth.register);
+router.post('/auth/login', authLimiter, auth.login);
+router.post('/auth/recover', authLimiter, auth.recover);
+
 router.get('/receipts/verify/:receiptNumber', publicLimiter, receipts.verify);
 
 // Public catalogue (matches /docs): anyone can browse services and departments.
 router.get('/services', catalog.services);
 router.get('/departments', catalog.departments);
 
-router.post('/auth/otp/request', otpLimiter, auth.requestOtp);
-router.post('/auth/otp/verify', authLimiter, auth.verifyOtp);
-router.post('/auth/staff/login', authLimiter, auth.staffLogin);
-router.post('/auth/register', authLimiter, auth.register); // <--- ADD THIS LINE
-
-router.get('/receipts/verify/:receiptNumber', publicLimiter, receipts.verify);
-
+// ---------------------------------------------------------------------------
 // Everything below requires a valid bearer token
+// ---------------------------------------------------------------------------
 
 router.use(authenticate);
 
 router.post('/auth/logout', auth.logout);
 
 // Citizen profile and identity
-
 router.get('/me', CITIZEN, citizens.me);
 router.patch('/me', CITIZEN, citizens.updateSelf);
 router.post('/citizens', HOME_AFFAIRS, citizens.create);
@@ -62,25 +63,22 @@ router.patch('/citizens/:nationalId', HOME_AFFAIRS, citizens.update);
 router.post('/identity/verify', STAFF, identity.verify);
 
 // Applications
-
-router.post('/applications', CITIZEN, applications.submit);
+router.post('/applications', CITIZEN, requireActiveCitizen, applications.submit);
 router.get('/applications', applications.list);
 router.get('/applications/:id', applications.get);
 router.patch('/applications/:id/status', DEPT_STAFF, applications.changeStatus);
 router.post('/applications/:id/assign', DEPT_STAFF, applications.assign);
-router.post('/applications/:id/respond', CITIZEN, applications.respond);
+router.post('/applications/:id/respond', CITIZEN, requireActiveCitizen, applications.respond);
 router.post('/applications/:id/withdraw', CITIZEN, applications.withdraw);
 router.post('/applications/:id/pay', CITIZEN, payments.pay);
 router.post('/applications/:id/documents/:documentId', CITIZEN, documents.attach);
 router.post('/applications/:id/documents/:documentId/review', DEPT_STAFF, documents.review);
 
 // Payments
-
 router.get('/payments', CITIZEN, payments.list);
 
 // Documents
-
-router.post('/documents', CITIZEN, upload.single('file'), documents.upload);
+router.post('/documents', CITIZEN, requireActiveCitizen, upload.single('file'), documents.upload);
 router.get('/documents', CITIZEN, documents.list);
 router.get(
   '/documents/:id/download',
@@ -90,13 +88,12 @@ router.get(
 router.delete('/documents/:id', CITIZEN, documents.remove);
 
 // Appointments and queue
-
 router.get(
   '/appointments/slots',
   requireRole('CITIZEN', 'DEPARTMENT_STAFF', 'HOME_AFFAIRS_OFFICER'),
   appointments.slots
 );
-router.post('/appointments', CITIZEN, appointments.book);
+router.post('/appointments', CITIZEN, requireActiveCitizen, appointments.book);
 router.get(
   '/appointments',
   requireRole('CITIZEN', 'DEPARTMENT_STAFF', 'HOME_AFFAIRS_OFFICER', 'ADMIN'),
@@ -115,18 +112,15 @@ router.get('/queue', STAFF, appointments.queue);
 router.post('/queue/call-next', STAFF, appointments.callNext);
 
 // Notifications
-
 router.get('/notifications', CITIZEN, notifications.list);
 router.patch('/notifications/read-all', CITIZEN, notifications.markAllRead);
 router.patch('/notifications/:id/read', CITIZEN, notifications.markRead);
 
 // Receipts
-
 router.get('/receipts', CITIZEN, receipts.list);
 router.get('/receipts/:id', CITIZEN, receipts.get);
 
 // Admin
-
 router.get('/admin/users', ADMIN, admin.listUsers);
 router.post('/admin/users', ADMIN, admin.createStaff);
 router.patch('/admin/users/:id', ADMIN, admin.updateUser);
